@@ -281,15 +281,43 @@
     .btn-record {
       background: var(--surface);
       color: var(--text);
-      min-width: 120px;
+      min-width: 110px;
     }
-    .btn-record:hover { border-color: var(--red); color: var(--red); }
+    .btn-record:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .btn-record:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-record.recording {
       background: var(--red-dim);
       border-color: var(--red);
       color: var(--red);
       animation: pulse-rec 1.2s ease-in-out infinite;
     }
+
+    .btn-pause {
+      background: var(--surface);
+      color: var(--text);
+      min-width: 110px;
+    }
+    .btn-pause:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+    .btn-pause:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-pause.paused {
+      background: #f59e0b15;
+      border-color: var(--orange);
+      color: var(--orange);
+      animation: pulse-pause 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-pause {
+      0%, 100% { box-shadow: 0 0 0 0 #f59e0b33; }
+      50% { box-shadow: 0 0 0 6px transparent; }
+    }
+
+    .btn-stop {
+      background: var(--surface);
+      color: var(--text);
+      min-width: 100px;
+    }
+    .btn-stop:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .btn-stop:disabled { opacity: 0.35; cursor: not-allowed; }
 
     @keyframes pulse-rec {
       0%, 100% { box-shadow: 0 0 0 0 var(--red-dim); }
@@ -300,7 +328,7 @@
       background: var(--accent-dim);
       border-color: var(--accent);
       color: var(--accent);
-      min-width: 120px;
+      min-width: 110px;
     }
     .btn-analyze:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
     .btn-analyze:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -311,6 +339,7 @@
       color: var(--text-muted);
     }
     .record-status.active { color: var(--red); animation: blink 1s step-end infinite; }
+    .record-status.paused { color: var(--orange); animation: blink 1.5s step-end infinite; }
 
     @keyframes blink {
       50% { opacity: 0; }
@@ -603,6 +632,8 @@
       <div class="controls-area">
         <span class="step-label-display" id="step-label">Step 1: Baseline (편하게 말하기)</span>
         <button class="btn btn-record" id="btn-record">🔴 Record</button>
+        <button class="btn btn-pause" id="btn-pause" disabled>⏸ Pause</button>
+        <button class="btn btn-stop" id="btn-stop" disabled>⏹ Stop</button>
         <button class="btn btn-analyze" id="btn-analyze" disabled>📊 Analyze</button>
         <span class="record-status" id="record-status"></span>
 

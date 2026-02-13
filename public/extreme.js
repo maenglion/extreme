@@ -19,6 +19,7 @@ let sid = generateSID();
 function createStepState() {
   return {
     isRecording: false,
+    isPaused: false,
     chunksCount: 0,
     voiceActiveMs: 0, // placeholder — 서버 응답으로 교체 예정
     result: null,
@@ -89,6 +90,8 @@ function initDOM() {
     stepTabs: document.getElementById("step-tabs"),
     stepLabel: document.getElementById("step-label"),
     btnRecord: document.getElementById("btn-record"),
+    btnPause: document.getElementById("btn-pause"),
+    btnStop: document.getElementById("btn-stop"),
     btnAnalyze: document.getElementById("btn-analyze"),
     recordStatus: document.getElementById("record-status"),
     tagGroup: document.getElementById("tag-group"),
@@ -123,8 +126,8 @@ function log(msg) {
 // ── Step Tab 전환 ──
 function selectStep(step) {
   const current = STATE.steps[STATE.currentStep];
-  if (current && current.isRecording) {
-    alert("녹음 중입니다. 먼저 Stop 하세요.");
+  if (current && (current.isRecording || current.isPaused)) {
+    alert("녹음 중(또는 일시정지)입니다. 먼저 Stop 하세요.");
     return;
   }
   STATE.currentStep = step;
@@ -152,9 +155,30 @@ function selectStep(step) {
 function updateButtons() {
   const step = STATE.currentStep;
   const stepData = STATE.steps[step];
-  DOM.btnRecord.textContent = stepData.isRecording ? "⏹ Stop" : "🔴 Record";
-  DOM.btnRecord.classList.toggle("recording", stepData.isRecording);
-  DOM.btnAnalyze.disabled = stepData.chunksCount === 0 || stepData.isRecording;
+  const isActive = stepData.isRecording || stepData.isPaused; // 세션 진행 중
+
+  // Record 버튼: 녹음 시작 전에만 활성
+  DOM.btnRecord.disabled = isActive;
+  DOM.btnRecord.classList.remove("recording");
+
+  // Pause 버튼: 녹음 중이거나 일시정지 중일 때만 활성
+  DOM.btnPause.disabled = !isActive;
+  if (stepData.isRecording) {
+    DOM.btnPause.textContent = "⏸ Pause";
+    DOM.btnPause.classList.remove("paused");
+  } else if (stepData.isPaused) {
+    DOM.btnPause.textContent = "▶ Resume";
+    DOM.btnPause.classList.add("paused");
+  } else {
+    DOM.btnPause.textContent = "⏸ Pause";
+    DOM.btnPause.classList.remove("paused");
+  }
+
+  // Stop 버튼: 세션 진행 중일 때만 활성
+  DOM.btnStop.disabled = !isActive;
+
+  // Analyze: 녹음 끝나고(chunk 있고) 세션 종료 상태일 때만
+  DOM.btnAnalyze.disabled = stepData.chunksCount === 0 || isActive;
 }
 
 // ── Tab Audio 캡처 ──
@@ -245,12 +269,13 @@ async function startRecording() {
   recorder.onstop = () => {
     log(`Step ${step} 녹음 종료 (${stepData.chunksCount} chunks)`);
     stepData.isRecording = false;
+    stepData.isPaused = false;
     stepData.voiceActiveMs = stepData.chunksCount * 1000; // placeholder 추정
     // step tab에 recorded 표시
     document.querySelector(`.step-tab[data-step="${step}"]`)?.classList.add("recorded");
     updateButtons();
     DOM.recordStatus.textContent = "";
-    DOM.recordStatus.classList.remove("active");
+    DOM.recordStatus.classList.remove("active", "paused");
     // 서버에 stream end 알림
     notifyStreamEnd(step);
   };
@@ -258,6 +283,7 @@ async function startRecording() {
   recorder.onerror = (e) => {
     log(`MediaRecorder 에러: ${e.error?.message || "unknown"}`);
     stepData.isRecording = false;
+    stepData.isPaused = false;
     updateButtons();
   };
 
@@ -267,24 +293,42 @@ async function startRecording() {
   // 1초 단위 chunk
   recorder.start(1000);
   stepData.isRecording = true;
+  stepData.isPaused = false;
   DOM.recordStatus.textContent = `● REC Step ${step}`;
   DOM.recordStatus.classList.add("active");
+  DOM.recordStatus.classList.remove("paused");
   updateButtons();
   log(`Step ${step} 녹음 시작 (${mimeType})`);
+}
+
+function pauseRecording() {
+  const step = STATE.currentStep;
+  const stepData = STATE.steps[step];
+
+  if (stepData.isRecording && STATE.mediaRecorder?.state === "recording") {
+    STATE.mediaRecorder.pause();
+    stepData.isRecording = false;
+    stepData.isPaused = true;
+    DOM.recordStatus.textContent = `⏸ PAUSED Step ${step}`;
+    DOM.recordStatus.classList.add("paused");
+    DOM.recordStatus.classList.remove("active");
+    updateButtons();
+    log(`Step ${step} 일시정지`);
+  } else if (stepData.isPaused && STATE.mediaRecorder?.state === "paused") {
+    STATE.mediaRecorder.resume();
+    stepData.isRecording = true;
+    stepData.isPaused = false;
+    DOM.recordStatus.textContent = `● REC Step ${step}`;
+    DOM.recordStatus.classList.add("active");
+    DOM.recordStatus.classList.remove("paused");
+    updateButtons();
+    log(`Step ${step} 녹음 재개`);
+  }
 }
 
 function stopRecording() {
   if (STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive") {
     STATE.mediaRecorder.stop();
-  }
-}
-
-function toggleRecording() {
-  const stepData = STATE.steps[STATE.currentStep];
-  if (stepData.isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
   }
 }
 
@@ -577,8 +621,10 @@ function bindEvents() {
     el.addEventListener("click", () => selectStep(parseInt(el.dataset.step)));
   });
 
-  // Record / Analyze
-  DOM.btnRecord.addEventListener("click", toggleRecording);
+  // Record / Pause / Stop / Analyze
+  DOM.btnRecord.addEventListener("click", startRecording);
+  DOM.btnPause.addEventListener("click", pauseRecording);
+  DOM.btnStop.addEventListener("click", stopRecording);
   DOM.btnAnalyze.addEventListener("click", analyzeStep);
 
   // Pace tag
