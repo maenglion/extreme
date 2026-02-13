@@ -1,1 +1,5 @@
-window.__RHYTHME_API_BASE__ = "https://rhythme-server-357918245340.asia-northeast3.run.app";
+// ============================================================
+// CASP Extreme v0 — Runtime Configuration (SSOT)
+// 배포 환경에 맞게 아래 URL만 변경하면 됩니다.
+// ============================================================
+window.__RHYTHME_API_BASE__ = ""; // 나중에 Extreme 서버 URL 넣기
