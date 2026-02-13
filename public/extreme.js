@@ -1,83 +1,65 @@
 // ============================================================
 // CASP Extreme v0 — Frontend Logic (PC-only, Internal)
+// Profiles → Sessions → Steps 구조
 // ============================================================
 
 // ── API Base (SSOT: runtime-config.js) ──
 const API_BASE = window.__RHYTHME_API_BASE__ || "";
+function isServerConfigured() { return API_BASE !== ""; }
 
-function isServerConfigured() {
-  return API_BASE !== "";
-}
-
-// ── Session ──
-function generateSID() {
-  return "ex_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-}
-let sid = generateSID();
-
-// ── Step별 데이터 구조 ──
-function createStepState() {
-  return {
-    isRecording: false,
-    isPaused: false,
-    chunksCount: 0,
-    voiceActiveMs: 0, // placeholder — 서버 응답으로 교체 예정
-    result: null,
-  };
-}
-
-// ── State ──
-const STATE = {
-  // Session 전체
-  nickname: "",
-  dimension: "overall",
-  target: 50,
-  protocol: "extreme_v0",
-  currentStep: 1,
-  // Tab audio stream (재사용)
-  displayStream: null,
-  audioTrack: null,
-  mediaRecorder: null,
-  // Step별 상태 (1~5)
-  steps: {
-    1: createStepState(),
-    2: createStepState(),
-    3: createStepState(),
-    4: createStepState(),
-    5: createStepState(),
-  },
-  // fast/mid/slow 태그
-  stepTag: {},
-};
-
+// ── Constants ──
+const STEP_COUNT = 10;
 const STEP_LABELS = {
   1: "Baseline (편하게 말하기)",
-  2: "토론 1",
-  3: "토론 2",
-  4: "토론 3",
-  5: "토론 4",
+  2: "토론 1", 3: "토론 2", 4: "토론 3", 5: "토론 4",
+  6: "토론 5", 7: "토론 6", 8: "토론 7", 9: "토론 8", 10: "토론 9",
+};
+const METRICS = [
+  "tempo_proxy", "silence_ratio", "pause_count_per_min", "pause_mean_ms",
+  "restart_proxy", "f0_median", "f0_range", "rms_median", "rms_range",
+];
+const DELTA_METRICS = ["silence_ratio", "f0_range", "rms_range", "restart_proxy"];
+
+// ── Helpers ──
+function generateSID() { return "ex_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8); }
+function now() { return new Date().toISOString(); }
+function fakeSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Factories ──
+function createStepState() {
+  return { isRecording: false, isPaused: false, isDone: false, chunksCount: 0, voiceActiveMs: 0, result: null };
+}
+function createSteps() {
+  const s = {};
+  for (let i = 1; i <= STEP_COUNT; i++) s[i] = createStepState();
+  return s;
+}
+function createSession(sid) {
+  return { sid, createdAt: now(), updatedAt: now(), steps: createSteps(), overall: null, stepTags: {} };
+}
+
+// ── Profiles ──
+const profiles = {};
+function getProfile(nick) {
+  if (!profiles[nick]) profiles[nick] = { activeSessionId: null, sessions: [] };
+  return profiles[nick];
+}
+function getActiveSession(nick) {
+  const p = getProfile(nick);
+  return p.sessions.find(s => s.sid === p.activeSessionId) || null;
+}
+function findSession(nick, sid) {
+  return getProfile(nick).sessions.find(s => s.sid === sid) || null;
+}
+
+// ── App State ──
+const STATE = {
+  nickname: "", dimension: "overall", target: 50, protocol: "extreme_v0",
+  currentStep: 1, viewMode: false, viewingSid: null,
+  displayStream: null, audioTrack: null, mediaRecorder: null,
 };
 
-const METRICS = [
-  "tempo_proxy",
-  "silence_ratio",
-  "pause_count_per_min",
-  "pause_mean_ms",
-  "restart_proxy",
-  "f0_median",
-  "f0_range",
-  "rms_median",
-  "rms_range",
-];
-
-const DELTA_METRICS = [
-  "silence_ratio",
-  "f0_range",
-  "rms_range",
-  "restart_proxy",
-];
-
-// ── DOM refs (lazy) ──
+// ── DOM ──
 let DOM = {};
 function initDOM() {
   DOM = {
@@ -87,22 +69,23 @@ function initDOM() {
     targetValue: document.getElementById("target-value"),
     sidDisplay: document.getElementById("sid-display"),
     serverStatus: document.getElementById("server-status"),
+    viewBadge: document.getElementById("view-badge"),
     stepTabs: document.getElementById("step-tabs"),
     stepLabel: document.getElementById("step-label"),
     btnRecord: document.getElementById("btn-record"),
     btnPause: document.getElementById("btn-pause"),
     btnStop: document.getElementById("btn-stop"),
     btnAnalyze: document.getElementById("btn-analyze"),
+    btnNewSession: document.getElementById("btn-new-session"),
+    btnBackToActive: document.getElementById("btn-back-to-active"),
     recordStatus: document.getElementById("record-status"),
-    tagGroup: document.getElementById("tag-group"),
     stepResultArea: document.getElementById("step-result-area"),
     overallResultArea: document.getElementById("overall-result-area"),
     deltaArea: document.getElementById("delta-area"),
     streamInfo: document.getElementById("stream-info"),
+    sessionList: document.getElementById("session-list"),
     logArea: document.getElementById("log-area"),
   };
-  DOM.sidDisplay.textContent = sid;
-  // 서버 상태 표시
   if (isServerConfigured()) {
     DOM.serverStatus.textContent = `API: ${API_BASE}`;
     DOM.serverStatus.className = "server-status configured";
@@ -112,118 +95,207 @@ function initDOM() {
   }
 }
 
-// ── Logging ──
+// ── Log ──
 function log(msg) {
   const t = new Date().toLocaleTimeString();
   const line = `[${t}] ${msg}`;
   console.log(line);
-  if (DOM.logArea) {
-    DOM.logArea.textContent += line + "\n";
-    DOM.logArea.scrollTop = DOM.logArea.scrollHeight;
+  if (DOM.logArea) { DOM.logArea.textContent += line + "\n"; DOM.logArea.scrollTop = DOM.logArea.scrollHeight; }
+}
+
+// ══════════════════════════════════════
+//  SESSION MANAGEMENT
+// ══════════════════════════════════════
+
+function startNewSession() {
+  if (!STATE.nickname) { alert("Nickname을 먼저 입력하세요."); DOM.nickname.focus(); return; }
+  const profile = getProfile(STATE.nickname);
+  const sid = generateSID();
+  profile.sessions.push(createSession(sid));
+  profile.activeSessionId = sid;
+  STATE.viewMode = false;
+  STATE.viewingSid = null;
+  log(`새 세션: ${sid}`);
+  refreshAll();
+}
+
+function switchToSession(sid) {
+  const profile = getProfile(STATE.nickname);
+  if (sid === profile.activeSessionId) {
+    STATE.viewMode = false;
+    STATE.viewingSid = null;
+    log(`활성 세션 복귀: ${sid}`);
+  } else {
+    STATE.viewMode = true;
+    STATE.viewingSid = sid;
+    log(`지난 세션 보기: ${sid} (읽기 전용)`);
+  }
+  refreshAll();
+}
+
+function getCurrentSession() {
+  if (!STATE.nickname) return null;
+  if (STATE.viewMode && STATE.viewingSid) return findSession(STATE.nickname, STATE.viewingSid);
+  return getActiveSession(STATE.nickname);
+}
+
+// ══════════════════════════════════════
+//  UI REFRESH
+// ══════════════════════════════════════
+
+function refreshAll() {
+  const session = getCurrentSession();
+  STATE.currentStep = 1;
+  renderSessionList();
+  renderViewBadge();
+  renderStepTabs(session);
+  selectStep(1);
+  renderAllStepResults(session);
+  renderOverall(session);
+  renderDelta(session);
+  updateButtons();
+  DOM.sidDisplay.textContent = session ? session.sid : "—";
+}
+
+function renderViewBadge() {
+  if (STATE.viewMode) {
+    DOM.viewBadge.textContent = "📖 지난 세션 보기 (읽기 전용)";
+    DOM.viewBadge.style.display = "inline-block";
+    DOM.btnBackToActive.style.display = "inline-block";
+  } else {
+    DOM.viewBadge.style.display = "none";
+    DOM.btnBackToActive.style.display = "none";
   }
 }
 
-// ── Step Tab 전환 ──
-function selectStep(step) {
-  const current = STATE.steps[STATE.currentStep];
-  if (current && (current.isRecording || current.isPaused)) {
-    alert("녹음 중(또는 일시정지)입니다. 먼저 Stop 하세요.");
+function renderSessionList() {
+  if (!STATE.nickname) {
+    DOM.sessionList.innerHTML = '<p class="placeholder">닉네임 입력 후 세션 표시</p>';
     return;
   }
-  STATE.currentStep = step;
-  // UI 업데이트
-  document.querySelectorAll(".step-tab").forEach((el) => {
-    const s = parseInt(el.dataset.step);
-    el.classList.toggle("active", s === step);
-    if (STATE.steps[s].chunksCount > 0) {
-      el.classList.add("recorded");
+  const profile = getProfile(STATE.nickname);
+  if (profile.sessions.length === 0) {
+    DOM.sessionList.innerHTML = '<p class="placeholder">세션 없음</p>';
+    return;
+  }
+  const viewSid = STATE.viewMode ? STATE.viewingSid : profile.activeSessionId;
+  DOM.sessionList.innerHTML = profile.sessions.slice().reverse().map(s => {
+    const isActive = s.sid === profile.activeSessionId;
+    const isViewing = s.sid === viewSid;
+    const doneCount = Object.values(s.steps).filter(st => st.isDone).length;
+    const time = new Date(s.createdAt).toLocaleTimeString();
+    return `
+      <div class="session-item ${isActive ? "active-session" : "past-session"} ${isViewing ? "viewing" : ""}" data-sid="${s.sid}">
+        <div class="session-item-top">
+          <span class="session-sid">${s.sid.slice(-10)}</span>
+          ${isActive ? '<span class="session-active-badge">LIVE</span>' : ""}
+        </div>
+        <div class="session-item-bottom">
+          <span>${time}</span><span>${doneCount}/${STEP_COUNT}</span>
+        </div>
+      </div>`;
+  }).join("");
+  DOM.sessionList.querySelectorAll(".session-item").forEach(el => {
+    el.addEventListener("click", () => switchToSession(el.dataset.sid));
+  });
+}
+
+function renderStepTabs(session) {
+  DOM.stepTabs.innerHTML = "";
+  for (let i = 1; i <= STEP_COUNT; i++) {
+    const tab = document.createElement("div");
+    tab.className = "step-tab";
+    tab.dataset.step = i;
+    tab.textContent = `S${i}`;
+    if (session && session.steps[i].isDone) tab.classList.add("recorded");
+    if (i === STATE.currentStep) tab.classList.add("active");
+    tab.addEventListener("click", () => selectStep(i));
+    DOM.stepTabs.appendChild(tab);
+  }
+}
+
+function selectStep(step) {
+  const session = getCurrentSession();
+  if (!STATE.viewMode && session) {
+    const cur = session.steps[STATE.currentStep];
+    if (cur && (cur.isRecording || cur.isPaused)) {
+      alert("녹음 중입니다. 먼저 Stop 하세요.");
+      return;
     }
+  }
+  STATE.currentStep = step;
+  document.querySelectorAll(".step-tab").forEach(el => {
+    el.classList.toggle("active", parseInt(el.dataset.step) === step);
   });
-  DOM.stepLabel.textContent = `Step ${step}: ${STEP_LABELS[step]}`;
-  // tag 복원
-  const savedTag = STATE.stepTag[step] || "";
-  document.querySelectorAll('input[name="pace-tag"]').forEach((r) => {
-    r.checked = r.value === savedTag;
-  });
-  // 결과 하이라이트
+  DOM.stepLabel.textContent = `S${step}: ${STEP_LABELS[step] || `토론 ${step - 1}`}`;
+  if (session) {
+    const tag = session.stepTags[step] || "";
+    document.querySelectorAll('input[name="pace-tag"]').forEach(r => { r.checked = r.value === tag; });
+  }
   highlightStepResult(step);
   updateButtons();
-  log(`Step ${step} 선택됨`);
 }
 
-// ── 버튼 상태 업데이트 ──
 function updateButtons() {
-  const step = STATE.currentStep;
-  const stepData = STATE.steps[step];
-  const isActive = stepData.isRecording || stepData.isPaused; // 세션 진행 중
+  const session = getCurrentSession();
+  const sd = session ? session.steps[STATE.currentStep] : null;
+  const isActive = sd ? (sd.isRecording || sd.isPaused) : false;
 
-  // Record 버튼: 녹음 시작 전에만 활성
-  DOM.btnRecord.disabled = isActive;
-  DOM.btnRecord.classList.remove("recording");
-
-  // Pause 버튼: 녹음 중이거나 일시정지 중일 때만 활성
-  DOM.btnPause.disabled = !isActive;
-  if (stepData.isRecording) {
-    DOM.btnPause.textContent = "⏸ Pause";
+  if (STATE.viewMode) {
+    DOM.btnRecord.disabled = true;
+    DOM.btnPause.disabled = true;
+    DOM.btnStop.disabled = true;
+    DOM.btnPause.textContent = "⏸";
     DOM.btnPause.classList.remove("paused");
-  } else if (stepData.isPaused) {
-    DOM.btnPause.textContent = "▶ Resume";
-    DOM.btnPause.classList.add("paused");
+    const hasDone = session && Object.values(session.steps).some(s => s.isDone && s.result);
+    DOM.btnAnalyze.disabled = !hasDone;
+    document.querySelectorAll('input[name="pace-tag"]').forEach(r => { r.disabled = true; });
+    DOM.nickname.disabled = true;
   } else {
-    DOM.btnPause.textContent = "⏸ Pause";
-    DOM.btnPause.classList.remove("paused");
+    DOM.nickname.disabled = false;
+    document.querySelectorAll('input[name="pace-tag"]').forEach(r => { r.disabled = false; });
+    DOM.btnRecord.disabled = !session || isActive || (sd && sd.isDone);
+    DOM.btnPause.disabled = !isActive;
+    if (sd && sd.isRecording) {
+      DOM.btnPause.textContent = "⏸";
+      DOM.btnPause.classList.remove("paused");
+    } else if (sd && sd.isPaused) {
+      DOM.btnPause.textContent = "▶";
+      DOM.btnPause.classList.add("paused");
+    } else {
+      DOM.btnPause.textContent = "⏸";
+      DOM.btnPause.classList.remove("paused");
+    }
+    DOM.btnStop.disabled = !isActive;
+    const hasDone = session && Object.values(session.steps).some(s => s.isDone && s.result);
+    DOM.btnAnalyze.disabled = !hasDone || isActive;
   }
-
-  // Stop 버튼: 세션 진행 중일 때만 활성
-  DOM.btnStop.disabled = !isActive;
-
-  // Analyze: 녹음 끝나고(chunk 있고) 세션 종료 상태일 때만
-  DOM.btnAnalyze.disabled = stepData.chunksCount === 0 || isActive;
 }
 
-// ── Tab Audio 캡처 ──
+// ══════════════════════════════════════
+//  TAB AUDIO
+// ══════════════════════════════════════
+
 async function acquireTabAudio() {
-  // 이미 활성 스트림이 있으면 재사용
   if (STATE.displayStream && STATE.audioTrack && STATE.audioTrack.readyState === "live") {
-    log("기존 탭 오디오 스트림 재사용");
-    return true;
+    log("탭 오디오 재사용"); return true;
   }
   try {
-    log("탭 오디오 공유 요청 중...");
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
-    // 비디오 트랙 즉시 종료
-    stream.getVideoTracks().forEach((t) => t.stop());
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      alert("⚠️ 탭 공유에서 '오디오 공유'를 체크해야 합니다.");
-      log("ERROR: 오디오 트랙 없음");
-      return false;
-    }
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    stream.getVideoTracks().forEach(t => t.stop());
+    const at = stream.getAudioTracks();
+    if (at.length === 0) { alert("⚠️ '오디오 공유'를 체크하세요."); return false; }
     STATE.displayStream = stream;
-    STATE.audioTrack = audioTracks[0];
-    // 트랙 종료 감지
+    STATE.audioTrack = at[0];
     STATE.audioTrack.onended = () => {
-      log("탭 오디오 트랙 종료됨 (사용자가 공유 중단)");
-      STATE.displayStream = null;
-      STATE.audioTrack = null;
-      // 현재 녹음 중이면 강제 종료
-      const currentStepData = STATE.steps[STATE.currentStep];
-      if (currentStepData.isRecording) {
-        stopRecording();
-      }
+      STATE.displayStream = null; STATE.audioTrack = null;
+      const session = getCurrentSession();
+      if (session) { const sd = session.steps[STATE.currentStep]; if (sd.isRecording || sd.isPaused) stopRecording(); }
       updateStreamInfo();
     };
     updateStreamInfo();
-    log("탭 오디오 획득 성공");
-    return true;
-  } catch (err) {
-    log(`탭 오디오 획득 실패: ${err.message}`);
-    alert("탭 공유가 취소되었거나 실패했습니다.");
-    return false;
-  }
+    log("탭 오디오 획득 성공"); return true;
+  } catch (err) { log(`탭 오디오 실패: ${err.message}`); return false; }
 }
 
 function updateStreamInfo() {
@@ -236,221 +308,169 @@ function updateStreamInfo() {
   }
 }
 
-// ── Recording (MediaRecorder + chunk streaming) ──
+// ══════════════════════════════════════
+//  RECORDING
+// ══════════════════════════════════════
+
 async function startRecording() {
-  if (!STATE.nickname) {
-    alert("Nickname을 입력하세요.");
-    DOM.nickname.focus();
-    return;
-  }
+  if (STATE.viewMode) return;
+  if (!STATE.nickname) { alert("Nickname을 입력하세요."); return; }
+  const session = getCurrentSession();
+  if (!session) { alert("New Session을 먼저 시작하세요."); return; }
+  const step = STATE.currentStep;
+  const sd = session.steps[step];
+  if (sd.isDone) { alert("이 Step은 이미 완료됨."); return; }
+
   const acquired = await acquireTabAudio();
   if (!acquired) return;
 
-  const step = STATE.currentStep;
-  const stepData = STATE.steps[step];
   const audioStream = new MediaStream([STATE.audioTrack]);
-
-  // MIME 선택
-  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-    ? "audio/webm;codecs=opus"
-    : "audio/webm";
-
-  const recorder = new MediaRecorder(audioStream, { mimeType });
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+  const recorder = new MediaRecorder(audioStream, { mimeType: mime });
   STATE.mediaRecorder = recorder;
-  stepData.chunksCount = 0;
+  sd.chunksCount = 0;
 
   recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) {
-      uploadChunk(e.data, step, stepData.chunksCount);
-      stepData.chunksCount++;
-    }
+    if (e.data.size > 0) { uploadChunk(e.data, step, sd.chunksCount); sd.chunksCount++; }
   };
-
   recorder.onstop = () => {
-    log(`Step ${step} 녹음 종료 (${stepData.chunksCount} chunks)`);
-    stepData.isRecording = false;
-    stepData.isPaused = false;
-    stepData.voiceActiveMs = stepData.chunksCount * 1000; // placeholder 추정
-    // step tab에 recorded 표시
+    sd.isRecording = false; sd.isPaused = false; sd.isDone = true;
+    sd.voiceActiveMs = sd.chunksCount * 1000;
+    session.updatedAt = now();
     document.querySelector(`.step-tab[data-step="${step}"]`)?.classList.add("recorded");
-    updateButtons();
-    DOM.recordStatus.textContent = "";
-    DOM.recordStatus.classList.remove("active", "paused");
-    // 서버에 stream end 알림
+    DOM.recordStatus.textContent = ""; DOM.recordStatus.className = "record-status";
+    log(`S${step} done (${sd.chunksCount} chunks)`);
     notifyStreamEnd(step);
-  };
-
-  recorder.onerror = (e) => {
-    log(`MediaRecorder 에러: ${e.error?.message || "unknown"}`);
-    stepData.isRecording = false;
-    stepData.isPaused = false;
+    autoStepSummary(step, session);
     updateButtons();
+    renderSessionList();
   };
+  recorder.onerror = (e) => { sd.isRecording = false; sd.isPaused = false; updateButtons(); };
 
-  // 서버에 stream start 알림
   notifyStreamStart(step);
-
-  // 1초 단위 chunk
   recorder.start(1000);
-  stepData.isRecording = true;
-  stepData.isPaused = false;
-  DOM.recordStatus.textContent = `● REC Step ${step}`;
-  DOM.recordStatus.classList.add("active");
-  DOM.recordStatus.classList.remove("paused");
+  sd.isRecording = true; sd.isPaused = false;
+  DOM.recordStatus.textContent = `● REC S${step}`;
+  DOM.recordStatus.className = "record-status active";
   updateButtons();
-  log(`Step ${step} 녹음 시작 (${mimeType})`);
+  log(`S${step} 녹음 시작`);
 }
 
 function pauseRecording() {
-  const step = STATE.currentStep;
-  const stepData = STATE.steps[step];
-
-  if (stepData.isRecording && STATE.mediaRecorder?.state === "recording") {
+  if (STATE.viewMode) return;
+  const session = getCurrentSession(); if (!session) return;
+  const sd = session.steps[STATE.currentStep];
+  if (sd.isRecording && STATE.mediaRecorder?.state === "recording") {
     STATE.mediaRecorder.pause();
-    stepData.isRecording = false;
-    stepData.isPaused = true;
-    DOM.recordStatus.textContent = `⏸ PAUSED Step ${step}`;
-    DOM.recordStatus.classList.add("paused");
-    DOM.recordStatus.classList.remove("active");
-    updateButtons();
-    log(`Step ${step} 일시정지`);
-  } else if (stepData.isPaused && STATE.mediaRecorder?.state === "paused") {
+    sd.isRecording = false; sd.isPaused = true;
+    DOM.recordStatus.textContent = `⏸ S${STATE.currentStep}`;
+    DOM.recordStatus.className = "record-status paused";
+    updateButtons(); log(`S${STATE.currentStep} 일시정지`);
+  } else if (sd.isPaused && STATE.mediaRecorder?.state === "paused") {
     STATE.mediaRecorder.resume();
-    stepData.isRecording = true;
-    stepData.isPaused = false;
-    DOM.recordStatus.textContent = `● REC Step ${step}`;
-    DOM.recordStatus.classList.add("active");
-    DOM.recordStatus.classList.remove("paused");
-    updateButtons();
-    log(`Step ${step} 녹음 재개`);
+    sd.isRecording = true; sd.isPaused = false;
+    DOM.recordStatus.textContent = `● REC S${STATE.currentStep}`;
+    DOM.recordStatus.className = "record-status active";
+    updateButtons(); log(`S${STATE.currentStep} 재개`);
   }
 }
 
 function stopRecording() {
-  if (STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive") {
-    STATE.mediaRecorder.stop();
-  }
+  if (STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive") STATE.mediaRecorder.stop();
 }
 
-// ── API: Chunk Upload (placeholder) ──
-function uploadChunk(blob, step, chunkIndex) {
-  if (!isServerConfigured()) {
-    console.log(`[no-server] chunk ${chunkIndex} (step ${step}, ${blob.size}B) — 전송 안 함`);
-    return;
+async function autoStepSummary(step, session) {
+  const sd = session.steps[step];
+  if (isServerConfigured()) {
+    try {
+      const resp = await fetch(`${API_BASE}/extreme/analyze`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(getMeta(step)),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      sd.result = await resp.json();
+    } catch (e) { sd.result = generateMockResult(step, sd); log(`S${step} summary fallback mock`); }
+  } else {
+    await fakeSleep(300);
+    sd.result = generateMockResult(step, sd);
+    log(`[no-server] S${step} mock summary`);
   }
-  const url = `${API_BASE}/extreme/stream/chunk`;
-  const formData = new FormData();
-  formData.append("audio", blob, `chunk_${chunkIndex}.webm`);
-  formData.append("sid", sid);
-  formData.append("step", step);
-  formData.append("chunk_index", chunkIndex);
-  fetch(url, { method: "POST", body: formData }).catch((e) => {
-    console.warn(`chunk ${chunkIndex} 전송 실패`, e.message);
-  });
+  renderStepResult(step, sd.result);
+  highlightStepResult(step);
+  updateButtons();
 }
 
-// ── API: Stream Start/End Notification ──
+// ══════════════════════════════════════
+//  NETWORK
+// ══════════════════════════════════════
+
 function getMeta(step) {
-  return {
-    sid,
-    nickname: STATE.nickname,
-    dimension: STATE.dimension,
-    target: STATE.target,
-    protocol: STATE.protocol,
-    step,
-    pace_tag: STATE.stepTag[step] || "",
-  };
+  const session = getCurrentSession();
+  return { sid: session?.sid || "", nickname: STATE.nickname, dimension: STATE.dimension,
+    target: STATE.target, protocol: STATE.protocol, step, pace_tag: session?.stepTags[step] || "" };
 }
-
+function uploadChunk(blob, step, idx) {
+  if (!isServerConfigured()) { console.log(`[no-server] chunk ${idx} S${step}`); return; }
+  const fd = new FormData();
+  fd.append("audio", blob, `chunk_${idx}.webm`);
+  fd.append("sid", getCurrentSession()?.sid || ""); fd.append("step", step); fd.append("chunk_index", idx);
+  fetch(`${API_BASE}/extreme/stream/chunk`, { method: "POST", body: fd }).catch(() => {});
+}
 function notifyStreamStart(step) {
-  if (!isServerConfigured()) {
-    log(`[no-server] stream/start (step ${step}) — 전송 안 함`);
-    return;
-  }
-  const url = `${API_BASE}/extreme/stream/start`;
-  fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(getMeta(step)),
-  })
-    .then((r) => log(`stream/start → ${r.status}`))
-    .catch((e) => log(`stream/start 실패: ${e.message}`));
+  if (!isServerConfigured()) { log(`[no-server] stream/start S${step}`); return; }
+  fetch(`${API_BASE}/extreme/stream/start`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(getMeta(step)),
+  }).catch(() => {});
 }
-
 function notifyStreamEnd(step) {
-  if (!isServerConfigured()) {
-    log(`[no-server] stream/end (step ${step}) — 전송 안 함`);
-    return;
-  }
-  const url = `${API_BASE}/extreme/stream/end`;
-  fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(getMeta(step)),
-  })
-    .then((r) => log(`stream/end → ${r.status}`))
-    .catch((e) => log(`stream/end 실패: ${e.message}`));
+  if (!isServerConfigured()) { log(`[no-server] stream/end S${step}`); return; }
+  fetch(`${API_BASE}/extreme/stream/end`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(getMeta(step)),
+  }).catch(() => {});
 }
 
-// ── API: Analyze ──
-async function analyzeStep() {
-  const step = STATE.currentStep;
-  const stepData = STATE.steps[step];
+// ══════════════════════════════════════
+//  ANALYZE (세션 전체 Overall)
+// ══════════════════════════════════════
 
-  if (stepData.chunksCount === 0) {
-    alert("이 Step은 아직 녹음되지 않았습니다.");
-    return;
+async function analyzeSession() {
+  const session = getCurrentSession(); if (!session) return;
+  const doneSteps = [];
+  for (let s = 1; s <= STEP_COUNT; s++) {
+    if (session.steps[s].isDone && session.steps[s].result) doneSteps.push(s);
   }
+  if (doneSteps.length === 0) { alert("완료된 Step이 없습니다."); return; }
 
   DOM.btnAnalyze.disabled = true;
-  DOM.btnAnalyze.textContent = "⏳ 분석 중...";
-  log(`Step ${step} 분석 요청...`);
+  DOM.btnAnalyze.querySelector(".btn-text").textContent = "분석 중...";
+  await fakeSleep(400);
 
-  // 서버 미설정 → mock으로 대체
-  if (!isServerConfigured()) {
-    log(`[no-server] 서버 미설정 — Mock 결과 사용`);
-    await fakeSleep(600); // UX용 딜레이
-    const mock = generateMockResult(step);
-    stepData.result = mock;
-    renderStepResult(step, mock);
-    renderDelta();
-    renderOverall();
-    DOM.btnAnalyze.textContent = "📊 Analyze";
-    DOM.btnAnalyze.disabled = false;
-    return;
-  }
-
-  // 서버 설정됨 → 실제 API 호출
-  const url = `${API_BASE}/extreme/analyze`;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(getMeta(step)),
+  let totalDur = 0;
+  doneSteps.forEach(s => { totalDur += session.steps[s].result.voice_duration_sec || 1; });
+  const overall = {};
+  METRICS.forEach(m => {
+    let ws = 0;
+    doneSteps.forEach(s => {
+      ws += ((session.steps[s].result[m] || 0) * ((session.steps[s].result.voice_duration_sec || 1) / totalDur));
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    log(`Step ${step} 분석 완료`);
-    stepData.result = data;
-    renderStepResult(step, data);
-    renderDelta();
-    renderOverall();
-  } catch (e) {
-    log(`Step ${step} 분석 실패: ${e.message}`);
-    alert(`분석 실패: ${e.message}`);
-  } finally {
-    DOM.btnAnalyze.textContent = "📊 Analyze";
-    DOM.btnAnalyze.disabled = false;
-  }
+    overall[m] = ws;
+  });
+  overall._steps = doneSteps.length;
+  overall._totalDuration = totalDur;
+  session.overall = overall;
+  session.updatedAt = now();
+
+  renderOverall(session);
+  renderDelta(session);
+  log(`Overall 완료 (${doneSteps.length} steps)`);
+  DOM.btnAnalyze.querySelector(".btn-text").textContent = "Analyze (Overall)";
+  DOM.btnAnalyze.disabled = false;
 }
 
-function fakeSleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+// ══════════════════════════════════════
+//  MOCK
+// ══════════════════════════════════════
 
-// ── Mock data (서버 미연결 시 테스트용) ──
-function generateMockResult(step) {
-  const stepData = STATE.steps[step];
+function generateMockResult(step, sd) {
   const base = {
     tempo_proxy: 3.8 + Math.random() * 1.5,
     silence_ratio: 0.2 + Math.random() * 0.3,
@@ -461,203 +481,125 @@ function generateMockResult(step) {
     f0_range: 30 + Math.random() * 60,
     rms_median: 0.02 + Math.random() * 0.05,
     rms_range: 0.01 + Math.random() * 0.03,
-    voice_duration_sec: (stepData.voiceActiveMs || stepData.chunksCount * 1000) / 1000,
+    voice_duration_sec: ((sd?.voiceActiveMs || 5000) / 1000),
   };
-  // step이 높을수록 약간 변화 (토론 효과 시뮬레이션)
-  if (step > 1) {
-    base.silence_ratio *= 0.8 + Math.random() * 0.4;
-    base.f0_range *= 0.7 + Math.random() * 0.6;
-    base.restart_proxy *= 0.9 + Math.random() * 0.3;
-  }
+  if (step > 1) { base.silence_ratio *= 0.8 + Math.random() * 0.4; base.f0_range *= 0.7 + Math.random() * 0.6; }
   return base;
 }
 
-// ── Rendering: Step Result ──
-function renderStepResult(step, data) {
-  let container = document.getElementById(`step-result-${step}`);
-  if (!container) {
-    container = document.createElement("div");
-    container.id = `step-result-${step}`;
-    container.className = "result-card";
-    DOM.stepResultArea.appendChild(container);
-  }
+// ══════════════════════════════════════
+//  RENDERING
+// ══════════════════════════════════════
 
-  container.innerHTML = `
+function renderAllStepResults(session) {
+  DOM.stepResultArea.innerHTML = "";
+  if (!session) return;
+  for (let s = 1; s <= STEP_COUNT; s++) {
+    if (session.steps[s].result) renderStepResult(s, session.steps[s].result);
+  }
+}
+
+function renderStepResult(step, data) {
+  let c = document.getElementById(`step-result-${step}`);
+  if (!c) { c = document.createElement("div"); c.id = `step-result-${step}`; c.className = "result-card"; DOM.stepResultArea.appendChild(c); }
+  c.innerHTML = `
     <div class="result-card-header">
-      <span class="result-step-badge">Step ${step}</span>
-      <span class="result-step-label">${STEP_LABELS[step]}</span>
+      <span class="result-step-badge">S${step}</span>
+      <span class="result-step-label">${STEP_LABELS[step] || `토론 ${step-1}`}</span>
     </div>
     <div class="result-metrics">
-      ${METRICS.map((m) => `
-        <div class="metric-item">
-          <span class="metric-name">${m}</span>
-          <span class="metric-value">${formatMetric(m, data[m])}</span>
-        </div>
-      `).join("")}
-    </div>
-  `;
-  container.classList.add("visible");
-  highlightStepResult(step);
+      ${METRICS.map(m => `<div class="metric-item"><span class="metric-name">${m}</span><span class="metric-value">${formatMetric(m, data[m])}</span></div>`).join("")}
+    </div>`;
+  c.classList.add("visible");
 }
 
 function highlightStepResult(step) {
-  document.querySelectorAll(".result-card").forEach((el) => {
+  document.querySelectorAll(".result-card").forEach(el => {
     el.classList.toggle("highlighted", el.id === `step-result-${step}`);
   });
 }
 
-// ── Rendering: Delta ──
-function renderDelta() {
-  const base = STATE.steps[1].result;
-  if (!base) {
-    DOM.deltaArea.innerHTML = '<p class="placeholder">Step 1 (Baseline) 분석 후 Delta가 표시됩니다.</p>';
+function renderOverall(session) {
+  if (!session?.overall) {
+    DOM.overallResultArea.innerHTML = '<p class="placeholder">Analyze 버튼으로 세션 Overall 계산</p>';
     return;
   }
-
-  let rows = "";
-  for (let s = 2; s <= 5; s++) {
-    const d = STATE.steps[s].result;
-    if (!d) continue;
-    const cells = DELTA_METRICS.map((m) => {
-      const delta = d[m] - base[m];
-      const cls = delta > 0 ? "delta-pos" : delta < 0 ? "delta-neg" : "";
-      return `<td class="${cls}">${delta >= 0 ? "+" : ""}${formatMetric(m, delta)}</td>`;
-    }).join("");
-    rows += `<tr><td class="delta-step-label">Step ${s}</td>${cells}</tr>`;
-  }
-
-  if (!rows) {
-    DOM.deltaArea.innerHTML = '<p class="placeholder">Step 2~5 분석 후 Delta가 표시됩니다.</p>';
-    return;
-  }
-
-  DOM.deltaArea.innerHTML = `
-    <table class="delta-table">
-      <thead>
-        <tr>
-          <th></th>
-          ${DELTA_METRICS.map((m) => `<th>Δ${m}</th>`).join("")}
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-}
-
-// ── Rendering: Session Overall ──
-function renderOverall() {
-  const analyzedSteps = [];
-  for (let s = 1; s <= 5; s++) {
-    if (STATE.steps[s].result) analyzedSteps.push(s);
-  }
-  if (analyzedSteps.length === 0) {
-    DOM.overallResultArea.innerHTML = '<p class="placeholder">분석 결과가 없습니다.</p>';
-    return;
-  }
-
-  // 유효 발화 시간 가중 평균
-  let totalDuration = 0;
-  analyzedSteps.forEach((s) => {
-    totalDuration += STATE.steps[s].result.voice_duration_sec || 1;
-  });
-
-  const overall = {};
-  METRICS.forEach((m) => {
-    let weightedSum = 0;
-    analyzedSteps.forEach((s) => {
-      const w = (STATE.steps[s].result.voice_duration_sec || 1) / totalDuration;
-      weightedSum += (STATE.steps[s].result[m] || 0) * w;
-    });
-    overall[m] = weightedSum;
-  });
-
+  const o = session.overall;
   DOM.overallResultArea.innerHTML = `
     <div class="result-card overall-card visible">
       <div class="result-card-header">
         <span class="result-step-badge overall-badge">Overall</span>
-        <span class="result-step-label">Session 가중평균 (${analyzedSteps.length} steps, ${totalDuration.toFixed(1)}s)</span>
+        <span class="result-step-label">가중평균 (${o._steps} steps, ${o._totalDuration.toFixed(1)}s)</span>
       </div>
       <div class="result-metrics">
-        ${METRICS.map((m) => `
-          <div class="metric-item">
-            <span class="metric-name">${m}</span>
-            <span class="metric-value">${formatMetric(m, overall[m])}</span>
-          </div>
-        `).join("")}
+        ${METRICS.map(m => `<div class="metric-item"><span class="metric-name">${m}</span><span class="metric-value">${formatMetric(m, o[m])}</span></div>`).join("")}
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-// ── Formatting ──
+function renderDelta(session) {
+  if (!session) { DOM.deltaArea.innerHTML = ""; return; }
+  const base = session.steps[1].result;
+  if (!base) { DOM.deltaArea.innerHTML = '<p class="placeholder">S1 완료 후 Delta 표시</p>'; return; }
+  let rows = "";
+  for (let s = 2; s <= STEP_COUNT; s++) {
+    const d = session.steps[s].result; if (!d) continue;
+    const cells = DELTA_METRICS.map(m => {
+      const delta = d[m] - base[m];
+      return `<td class="${delta > 0 ? "delta-pos" : delta < 0 ? "delta-neg" : ""}">${delta >= 0 ? "+" : ""}${formatMetric(m, delta)}</td>`;
+    }).join("");
+    rows += `<tr><td class="delta-step-label">S${s}</td>${cells}</tr>`;
+  }
+  if (!rows) { DOM.deltaArea.innerHTML = '<p class="placeholder">S2+ 완료 후 Delta 표시</p>'; return; }
+  DOM.deltaArea.innerHTML = `
+    <table class="delta-table">
+      <thead><tr><th></th>${DELTA_METRICS.map(m => `<th>Δ${m}</th>`).join("")}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function formatMetric(name, value) {
-  if (value === undefined || value === null) return "—";
+  if (value == null) return "—";
   if (name.includes("ratio")) return (value * 100).toFixed(1) + "%";
   if (name.includes("ms")) return Math.round(value) + "ms";
   if (name.includes("rms")) return value.toFixed(4);
   return typeof value === "number" ? value.toFixed(2) : value;
 }
 
-// ── Event Binding ──
+// ══════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════
+
 function bindEvents() {
-  // Nickname
-  DOM.nickname.addEventListener("input", (e) => {
-    STATE.nickname = e.target.value.trim();
+  DOM.nickname.addEventListener("change", (e) => {
+    const nick = e.target.value.trim(); if (!nick) return;
+    STATE.nickname = nick; STATE.viewMode = false; STATE.viewingSid = null;
+    const profile = getProfile(nick);
+    if (!profile.activeSessionId) startNewSession(); else refreshAll();
+    log(`닉네임: ${nick}`);
   });
-
-  // Dimension
-  DOM.dimension.addEventListener("change", (e) => {
-    STATE.dimension = e.target.value;
-  });
-
-  // Target slider
-  DOM.target.addEventListener("input", (e) => {
-    STATE.target = parseInt(e.target.value);
-    DOM.targetValue.textContent = STATE.target;
-  });
-
-  // Step tabs
-  document.querySelectorAll(".step-tab").forEach((el) => {
-    el.addEventListener("click", () => selectStep(parseInt(el.dataset.step)));
-  });
-
-  // Record / Pause / Stop / Analyze
+  DOM.dimension.addEventListener("change", (e) => { STATE.dimension = e.target.value; });
+  DOM.target.addEventListener("input", (e) => { STATE.target = parseInt(e.target.value); DOM.targetValue.textContent = STATE.target; });
   DOM.btnRecord.addEventListener("click", startRecording);
   DOM.btnPause.addEventListener("click", pauseRecording);
   DOM.btnStop.addEventListener("click", stopRecording);
-  DOM.btnAnalyze.addEventListener("click", analyzeStep);
-
-  // Pace tag
-  document.querySelectorAll('input[name="pace-tag"]').forEach((r) => {
-    r.addEventListener("change", (e) => {
-      STATE.stepTag[STATE.currentStep] = e.target.value;
-    });
+  DOM.btnAnalyze.addEventListener("click", analyzeSession);
+  DOM.btnNewSession.addEventListener("click", startNewSession);
+  DOM.btnBackToActive.addEventListener("click", () => {
+    const p = getProfile(STATE.nickname);
+    if (p.activeSessionId) switchToSession(p.activeSessionId);
   });
-
-  // New Session
-  document.getElementById("btn-new-session")?.addEventListener("click", () => {
-    if (!confirm("새 세션을 시작하시겠습니까? 현재 결과가 초기화됩니다.")) return;
-    sid = generateSID();
-    DOM.sidDisplay.textContent = sid;
-    // Step 상태 초기화
-    for (let s = 1; s <= 5; s++) {
-      STATE.steps[s] = createStepState();
-    }
-    STATE.stepTag = {};
-    DOM.stepResultArea.innerHTML = "";
-    DOM.overallResultArea.innerHTML = '<p class="placeholder">분석 결과가 없습니다.</p>';
-    DOM.deltaArea.innerHTML = '<p class="placeholder">Step 1 (Baseline) 분석 후 Delta가 표시됩니다.</p>';
-    document.querySelectorAll(".step-tab").forEach((el) => el.classList.remove("recorded"));
-    selectStep(1);
-    log("새 세션 시작: " + sid);
+  document.querySelectorAll('input[name="pace-tag"]').forEach(r => {
+    r.addEventListener("change", (e) => {
+      const session = getCurrentSession();
+      if (session && !STATE.viewMode) session.stepTags[STATE.currentStep] = e.target.value;
+    });
   });
 }
 
 // ── Init ──
 document.addEventListener("DOMContentLoaded", () => {
-  initDOM();
-  bindEvents();
-  selectStep(1);
-  updateStreamInfo();
-  log(`Extreme v0 초기화 완료 | API: ${API_BASE || "(미설정)"} | SID: ${sid}`);
+  initDOM(); bindEvents(); updateStreamInfo(); updateButtons();
+  log(`Extreme v0 | API: ${API_BASE || "(미설정)"}`);
+  log("닉네임 입력 → Enter로 세션 자동 생성");
 });

@@ -7,677 +7,253 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    /* ── Reset & Base ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #0c0c0f;
-      --surface: #16161a;
-      --surface2: #1e1e24;
-      --border: #2a2a32;
-      --border-active: #4a9eff;
-      --text: #e0e0e6;
-      --text-muted: #72727e;
-      --accent: #4a9eff;
-      --accent-dim: #4a9eff33;
-      --red: #ff4a6a;
-      --red-dim: #ff4a6a22;
-      --green: #34d399;
-      --green-dim: #34d39922;
+      --bg: #0c0c0f; --surface: #16161a; --surface2: #1e1e24;
+      --border: #2a2a32; --border-active: #4a9eff;
+      --text: #e0e0e6; --text-muted: #72727e;
+      --accent: #4a9eff; --accent-dim: #4a9eff33;
+      --red: #ff4a6a; --red-dim: #ff4a6a22;
+      --green: #34d399; --green-dim: #34d39922;
       --orange: #f59e0b;
-      --mono: 'JetBrains Mono', monospace;
-      --sans: 'Noto Sans KR', sans-serif;
+      --mono: 'JetBrains Mono', monospace; --sans: 'Noto Sans KR', sans-serif;
       --radius: 6px;
     }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 14px;
-      line-height: 1.5;
-      min-height: 100vh;
-    }
+    /* ── Layout: 2-column ── */
+    .app { display: grid; grid-template-columns: 1fr 220px; grid-template-rows: auto auto 1fr auto; gap: 0 16px; max-width: 1320px; margin: 0 auto; padding: 20px 24px; min-height: 100vh; }
+    .header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .header-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .logo { font-family: var(--mono); font-weight: 700; font-size: 18px; color: var(--accent); letter-spacing: -0.5px; }
+    .version-tag { font-family: var(--mono); font-size: 10px; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 3px; text-transform: uppercase; letter-spacing: 1px; }
+    .sid-display { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+    .server-status { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border-radius: 3px; }
+    .server-status.not-configured { color: var(--orange); background: #f59e0b15; border: 1px solid #f59e0b44; }
+    .server-status.configured { color: var(--green); background: var(--green-dim); border: 1px solid #34d39944; }
+    .header-right { display: flex; gap: 8px; align-items: center; }
 
-    /* ── Layout ── */
-    .app {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px 32px;
-    }
+    .view-badge { display: none; font-family: var(--mono); font-size: 11px; color: var(--orange); background: #f59e0b15; border: 1px solid #f59e0b44; padding: 4px 10px; border-radius: 4px; }
+    .btn-back { display: none; font-family: var(--mono); font-size: 11px; background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+    .btn-back:hover { background: var(--accent-dim); }
 
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 24px;
-    }
+    /* ── Tab Audio Notice ── */
+    .notice { grid-column: 1 / -1; background: var(--accent-dim); border: 1px solid var(--border-active); border-radius: var(--radius); padding: 8px 14px; margin-bottom: 14px; font-size: 12px; color: var(--accent); font-family: var(--mono); }
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    /* ── Config ── */
+    .config-panel { grid-column: 1 / 2; display: grid; grid-template-columns: 1fr 1fr 140px 1fr; gap: 12px; margin-bottom: 14px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .config-field label { display: block; font-size: 10px; font-family: var(--mono); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .config-field input, .config-field select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--text); font-family: var(--mono); font-size: 12px; outline: none; }
+    .config-field input:focus, .config-field select:focus { border-color: var(--accent); }
+    .config-field .readonly-field { background: var(--surface2); color: var(--text-muted); cursor: default; }
+    .target-row { display: flex; align-items: center; gap: 6px; }
+    .target-row input[type="range"] { flex: 1; accent-color: var(--accent); padding: 0; background: none; border: none; }
+    .target-num { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent); min-width: 28px; text-align: right; }
 
-    .logo {
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 18px;
-      color: var(--accent);
-      letter-spacing: -0.5px;
-    }
+    /* ── Sidebar: Session History ── */
+    .sidebar { grid-column: 2 / 3; grid-row: 3 / 5; display: flex; flex-direction: column; gap: 8px; }
+    .sidebar-header { display: flex; justify-content: space-between; align-items: center; }
+    .sidebar-title { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .btn-new { font-family: var(--mono); font-size: 10px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 3px 8px; border-radius: 3px; cursor: pointer; }
+    .btn-new:hover { border-color: var(--accent); color: var(--accent); }
+    .session-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .session-item { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+    .session-item:hover { border-color: var(--text-muted); }
+    .session-item.viewing { border-color: var(--accent); background: var(--accent-dim); }
+    .session-item.past-session { opacity: 0.6; }
+    .session-item.past-session:hover { opacity: 0.85; }
+    .session-item-top { display: flex; justify-content: space-between; align-items: center; }
+    .session-sid { font-family: var(--mono); font-size: 11px; color: var(--text); }
+    .session-active-badge { font-family: var(--mono); font-size: 9px; font-weight: 700; color: var(--green); background: var(--green-dim); padding: 1px 6px; border-radius: 3px; }
+    .session-item-bottom { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-top: 3px; }
 
-    .version-tag {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-muted);
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      padding: 2px 8px;
-      border-radius: 3px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .sid-display {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .server-status {
-      font-family: var(--mono);
-      font-size: 10px;
-      padding: 2px 8px;
-      border-radius: 3px;
-      letter-spacing: 0.3px;
-    }
-    .server-status.not-configured {
-      color: var(--orange);
-      background: #f59e0b15;
-      border: 1px solid #f59e0b44;
-    }
-    .server-status.configured {
-      color: var(--green);
-      background: var(--green-dim);
-      border: 1px solid #34d39944;
-    }
-
-    /* ── Tab Audio 안내 ── */
-    .tab-audio-notice {
-      background: var(--accent-dim);
-      border: 1px solid var(--border-active);
-      border-radius: var(--radius);
-      padding: 10px 16px;
-      margin-bottom: 20px;
-      font-size: 13px;
-      color: var(--accent);
-      font-family: var(--mono);
-    }
-
-    /* ── Config Panel ── */
-    .config-panel {
-      display: grid;
-      grid-template-columns: 1fr 1fr 160px 1fr;
-      gap: 16px;
-      margin-bottom: 24px;
-      padding: 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-    }
-
-    .config-field label {
-      display: block;
-      font-size: 11px;
-      font-family: var(--mono);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-
-    .config-field input,
-    .config-field select {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 8px 10px;
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 13px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .config-field input:focus,
-    .config-field select:focus {
-      border-color: var(--accent);
-    }
-
-    .config-field .readonly-field {
-      background: var(--surface2);
-      color: var(--text-muted);
-      cursor: default;
-    }
-
-    .target-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .target-row input[type="range"] {
-      flex: 1;
-      accent-color: var(--accent);
-      padding: 0;
-      background: none;
-      border: none;
-    }
-
-    .target-row .target-num {
-      font-family: var(--mono);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--accent);
-      min-width: 32px;
-      text-align: right;
-    }
+    /* ── Main area ── */
+    .main-area { grid-column: 1 / 2; display: flex; flex-direction: column; gap: 14px; }
 
     /* ── Stream Info ── */
-    .stream-info {
-      font-family: var(--mono);
-      font-size: 12px;
-      padding: 6px 12px;
-      border-radius: 4px;
-      display: inline-block;
-      margin-bottom: 16px;
-    }
+    .stream-info { font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-block; }
     .stream-info.disconnected { color: var(--text-muted); background: var(--surface); }
     .stream-info.connected { color: var(--green); background: var(--green-dim); }
 
     /* ── Step Tabs ── */
-    .step-section {
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-      margin-bottom: 24px;
-    }
-
-    .step-tabs {
-      display: flex;
-      gap: 4px;
-    }
-
-    .step-tab {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 8px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      position: relative;
-      user-select: none;
-    }
-
+    .step-control { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .step-tabs { display: flex; gap: 3px; }
+    .step-tab { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 5px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; position: relative; user-select: none; }
     .step-tab:hover { border-color: var(--text-muted); }
-    .step-tab.active {
-      background: var(--accent-dim);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .step-tab.recorded::after {
-      content: "✓";
-      position: absolute;
-      top: -4px;
-      right: -4px;
-      font-size: 9px;
-      background: var(--green);
-      color: var(--bg);
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+    .step-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .step-tab.recorded::after { content: "✓"; position: absolute; top: -3px; right: -3px; font-size: 8px; background: var(--green); color: var(--bg); width: 12px; height: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 
     /* ── Controls ── */
-    .controls-area {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .controls { display: flex; align-items: center; gap: 8px; }
+    .step-label-text { font-family: var(--mono); font-size: 12px; color: var(--text-muted); min-width: 160px; }
 
-    .step-label-display {
-      font-size: 13px;
-      color: var(--text-muted);
-      font-family: var(--mono);
-      min-width: 180px;
-    }
+    .btn-icon { font-size: 16px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s; color: var(--text); }
+    .btn-icon:hover:not(:disabled) { border-color: var(--text); }
+    .btn-icon:disabled { opacity: 0.25; cursor: not-allowed; }
+    .btn-icon.btn-rec:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .btn-icon.btn-pause-icon:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+    .btn-icon.btn-pause-icon.paused { background: #f59e0b15; border-color: var(--orange); color: var(--orange); }
+    .btn-icon.btn-stop-icon:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
 
-    .btn {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 10px 20px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.15s;
-      outline: none;
-      user-select: none;
-    }
-
-    .btn-record {
-      background: var(--surface);
-      color: var(--text);
-      min-width: 110px;
-    }
-    .btn-record:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
-    .btn-record:disabled { opacity: 0.35; cursor: not-allowed; }
-    .btn-record.recording {
-      background: var(--red-dim);
-      border-color: var(--red);
-      color: var(--red);
-      animation: pulse-rec 1.2s ease-in-out infinite;
-    }
-
-    .btn-pause {
-      background: var(--surface);
-      color: var(--text);
-      min-width: 110px;
-    }
-    .btn-pause:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
-    .btn-pause:disabled { opacity: 0.35; cursor: not-allowed; }
-    .btn-pause.paused {
-      background: #f59e0b15;
-      border-color: var(--orange);
-      color: var(--orange);
-      animation: pulse-pause 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse-pause {
-      0%, 100% { box-shadow: 0 0 0 0 #f59e0b33; }
-      50% { box-shadow: 0 0 0 6px transparent; }
-    }
-
-    .btn-stop {
-      background: var(--surface);
-      color: var(--text);
-      min-width: 100px;
-    }
-    .btn-stop:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
-    .btn-stop:disabled { opacity: 0.35; cursor: not-allowed; }
-
-    @keyframes pulse-rec {
-      0%, 100% { box-shadow: 0 0 0 0 var(--red-dim); }
-      50% { box-shadow: 0 0 0 6px transparent; }
-    }
-
-    .btn-analyze {
-      background: var(--accent-dim);
-      border-color: var(--accent);
-      color: var(--accent);
-      min-width: 110px;
-    }
+    .btn-analyze { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 7px 14px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 4px; color: var(--accent); cursor: pointer; transition: all 0.15s; margin-left: 8px; }
     .btn-analyze:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
-    .btn-analyze:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-analyze:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    .record-status {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+    .record-status { font-family: var(--mono); font-size: 11px; color: var(--text-muted); min-width: 80px; }
     .record-status.active { color: var(--red); animation: blink 1s step-end infinite; }
     .record-status.paused { color: var(--orange); animation: blink 1.5s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
 
-    @keyframes blink {
-      50% { opacity: 0; }
-    }
-
-    /* ── Tag Group ── */
-    .tag-group {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-left: auto;
-    }
-
-    .tag-group span {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .tag-radio {
-      display: none;
-    }
-
-    .tag-label {
-      font-family: var(--mono);
-      font-size: 11px;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 3px;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .tag-radio:checked + .tag-label {
-      border-color: var(--orange);
-      color: var(--orange);
-      background: #f59e0b15;
-    }
+    /* ── Pace Tag ── */
+    .tag-group { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+    .tag-group span { font-family: var(--mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+    .tag-radio { display: none; }
+    .tag-label { font-family: var(--mono); font-size: 10px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-muted); cursor: pointer; }
+    .tag-radio:checked + .tag-label { border-color: var(--orange); color: var(--orange); background: #f59e0b15; }
 
     /* ── Results ── */
-    .results-section {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
+    .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .results-col h3 { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; opacity: 0; transform: translateY(6px); transition: all 0.25s ease; }
+    .result-card.visible { opacity: 1; transform: translateY(0); }
+    .result-card.highlighted { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+    .result-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .result-step-badge { font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--accent-dim); color: var(--accent); padding: 1px 6px; border-radius: 3px; }
+    .overall-badge { background: var(--green-dim); color: var(--green); }
+    .result-step-label { font-size: 11px; color: var(--text-muted); }
+    .result-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; }
+    .metric-item { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; }
+    .metric-name { font-family: var(--mono); font-size: 10px; color: var(--text-muted); }
+    .metric-value { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text); }
 
-    .results-column h3 {
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .result-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 10px;
-      opacity: 0;
-      transform: translateY(8px);
-      transition: all 0.3s ease;
-    }
-
-    .result-card.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .result-card.highlighted {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent-dim);
-    }
-
-    .result-card-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .result-step-badge {
-      font-family: var(--mono);
-      font-size: 10px;
-      font-weight: 700;
-      background: var(--accent-dim);
-      color: var(--accent);
-      padding: 2px 8px;
-      border-radius: 3px;
-      letter-spacing: 0.5px;
-    }
-
-    .overall-badge {
-      background: var(--green-dim);
-      color: var(--green);
-    }
-
-    .result-step-label {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .result-metrics {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px 12px;
-    }
-
-    .metric-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      padding: 3px 0;
-    }
-
-    .metric-name {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .metric-value {
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    /* ── Delta Table ── */
-    .delta-section {
-      grid-column: 1 / -1;
-    }
-
-    .delta-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
-    .delta-table th {
-      text-align: right;
-      padding: 6px 12px;
-      color: var(--text-muted);
-      font-weight: 600;
-      font-size: 11px;
-      border-bottom: 1px solid var(--border);
-    }
-
+    /* ── Delta ── */
+    .delta-section { grid-column: 1 / -1; }
+    .delta-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+    .delta-table th { text-align: right; padding: 4px 8px; color: var(--text-muted); font-weight: 600; font-size: 10px; border-bottom: 1px solid var(--border); }
     .delta-table th:first-child { text-align: left; }
-
-    .delta-table td {
-      text-align: right;
-      padding: 6px 12px;
-      border-bottom: 1px solid var(--border);
-    }
-
+    .delta-table td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); }
     .delta-table td:first-child { text-align: left; }
     .delta-step-label { color: var(--text-muted); font-weight: 600; }
     .delta-pos { color: var(--red); }
     .delta-neg { color: var(--green); }
-
-    .placeholder {
-      color: var(--text-muted);
-      font-size: 12px;
-      font-family: var(--mono);
-      font-style: italic;
-    }
+    .placeholder { color: var(--text-muted); font-size: 11px; font-family: var(--mono); font-style: italic; }
 
     /* ── Log ── */
-    .log-section {
-      margin-top: 24px;
-    }
+    .log-section { grid-column: 1 / 2; }
+    .log-section h3 { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .log-area { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-family: var(--mono); font-size: 10px; color: var(--text-muted); height: 100px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
 
-    .log-section h3 {
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
-    }
-
-    .log-area {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 14px;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-      height: 120px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    /* ── New Session Button ── */
-    .btn-new-session {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      font-family: var(--mono);
-      font-size: 11px;
-      padding: 4px 12px;
-      border-radius: 3px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .btn-new-session:hover {
-      border-color: var(--text-muted);
-      color: var(--text);
-    }
-
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-left">
-        <div class="logo">CASP:Extreme</div>
-        <span class="version-tag">v0 internal</span>
-        <span class="sid-display">SID: <span id="sid-display">—</span></span>
-        <span id="server-status" class="server-status not-configured">⚠ Server not configured</span>
-      </div>
-      <button class="btn-new-session" id="btn-new-session">+ New Session</button>
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">CASP:Extreme</div>
+      <span class="version-tag">v0 internal</span>
+      <span class="sid-display">SID: <span id="sid-display">—</span></span>
+      <span id="server-status" class="server-status not-configured">⚠ Server not configured</span>
+      <span id="view-badge" class="view-badge"></span>
+      <button id="btn-back-to-active" class="btn-back">← 현재 세션</button>
     </div>
-
-    <!-- Tab Audio Notice -->
-    <div class="tab-audio-notice">
-      ⚡ Record 시 탭 공유 팝업 → "오디오 공유" 켜고, 유튜브 탭을 선택하세요.
+    <div class="header-right">
+      <div id="stream-info" class="stream-info disconnected">⚫ 탭 오디오 없음</div>
     </div>
+  </div>
 
-    <!-- Config -->
-    <div class="config-panel">
-      <div class="config-field">
-        <label>Nickname *</label>
-        <input type="text" id="nickname" placeholder="예: hong" autocomplete="off">
-      </div>
-      <div class="config-field">
-        <label>Dimension</label>
-        <select id="dimension">
-          <option value="overall">overall</option>
-          <option value="tempo">tempo</option>
-          <option value="pitch">pitch</option>
-          <option value="energy">energy</option>
-          <option value="fluency">fluency</option>
-        </select>
-      </div>
-      <div class="config-field">
-        <label>Target</label>
-        <div class="target-row">
-          <input type="range" id="target" min="0" max="100" value="50">
-          <span class="target-num" id="target-value">50</span>
-        </div>
-      </div>
-      <div class="config-field">
-        <label>Protocol</label>
-        <input type="text" class="readonly-field" value="extreme_v0" readonly>
+  <!-- Notice -->
+  <div class="notice">⚡ Record → 탭 공유 팝업 → "오디오 공유" 켜기 → 유튜브 탭 선택</div>
+
+  <!-- Config -->
+  <div class="config-panel">
+    <div class="config-field">
+      <label>Nickname *</label>
+      <input type="text" id="nickname" placeholder="입력 후 Enter" autocomplete="off">
+    </div>
+    <div class="config-field">
+      <label>Dimension</label>
+      <select id="dimension">
+        <option value="overall">overall</option>
+        <option value="tempo">tempo</option>
+        <option value="pitch">pitch</option>
+        <option value="energy">energy</option>
+        <option value="fluency">fluency</option>
+      </select>
+    </div>
+    <div class="config-field">
+      <label>Target</label>
+      <div class="target-row">
+        <input type="range" id="target" min="0" max="100" value="50">
+        <span class="target-num" id="target-value">50</span>
       </div>
     </div>
+    <div class="config-field">
+      <label>Protocol</label>
+      <input type="text" class="readonly-field" value="extreme_v0" readonly>
+    </div>
+  </div>
 
-    <!-- Stream Info -->
-    <div id="stream-info" class="stream-info disconnected">⚫ 탭 오디오 없음</div>
-
-    <!-- Step Section -->
-    <div class="step-section">
-      <div class="step-tabs" id="step-tabs">
-        <div class="step-tab active" data-step="1">S1</div>
-        <div class="step-tab" data-step="2">S2</div>
-        <div class="step-tab" data-step="3">S3</div>
-        <div class="step-tab" data-step="4">S4</div>
-        <div class="step-tab" data-step="5">S5</div>
-      </div>
-
-      <div class="controls-area">
-        <span class="step-label-display" id="step-label">Step 1: Baseline (편하게 말하기)</span>
-        <button class="btn btn-record" id="btn-record">🔴 Record</button>
-        <button class="btn btn-pause" id="btn-pause" disabled>⏸ Pause</button>
-        <button class="btn btn-stop" id="btn-stop" disabled>⏹ Stop</button>
-        <button class="btn btn-analyze" id="btn-analyze" disabled>📊 Analyze</button>
-        <span class="record-status" id="record-status"></span>
-
-        <div class="tag-group" id="tag-group">
-          <span>Pace:</span>
-          <input type="radio" name="pace-tag" value="fast" id="tag-fast" class="tag-radio">
-          <label for="tag-fast" class="tag-label">Fast</label>
-          <input type="radio" name="pace-tag" value="mid" id="tag-mid" class="tag-radio">
-          <label for="tag-mid" class="tag-label">Mid</label>
-          <input type="radio" name="pace-tag" value="slow" id="tag-slow" class="tag-radio">
-          <label for="tag-slow" class="tag-label">Slow</label>
-        </div>
+  <!-- Main Area -->
+  <div class="main-area">
+    <!-- Step Control -->
+    <div class="step-control">
+      <div class="step-tabs" id="step-tabs"></div>
+    </div>
+    <div class="controls">
+      <span class="step-label-text" id="step-label">S1: Baseline</span>
+      <button class="btn-icon btn-rec" id="btn-record" disabled title="Record">🔴</button>
+      <button class="btn-icon btn-pause-icon" id="btn-pause" disabled title="Pause/Resume">⏸</button>
+      <button class="btn-icon btn-stop-icon" id="btn-stop" disabled title="Stop">⏹</button>
+      <span class="record-status" id="record-status"></span>
+      <button class="btn-analyze" id="btn-analyze" disabled><span class="btn-text">📊 Analyze (Overall)</span></button>
+      <div class="tag-group">
+        <span>Pace:</span>
+        <input type="radio" name="pace-tag" value="fast" id="tag-fast" class="tag-radio"><label for="tag-fast" class="tag-label">F</label>
+        <input type="radio" name="pace-tag" value="mid" id="tag-mid" class="tag-radio"><label for="tag-mid" class="tag-label">M</label>
+        <input type="radio" name="pace-tag" value="slow" id="tag-slow" class="tag-radio"><label for="tag-slow" class="tag-label">S</label>
       </div>
     </div>
 
     <!-- Results -->
-    <div class="results-section">
-      <div class="results-column">
+    <div class="results-grid">
+      <div class="results-col">
         <h3>Step Results</h3>
         <div id="step-result-area"></div>
       </div>
-      <div class="results-column">
+      <div class="results-col">
         <h3>Session Overall</h3>
-        <div id="overall-result-area">
-          <p class="placeholder">분석 결과가 없습니다.</p>
-        </div>
+        <div id="overall-result-area"><p class="placeholder">Analyze 버튼으로 Overall 계산</p></div>
       </div>
       <div class="delta-section">
         <h3>Delta (vs Baseline)</h3>
-        <div id="delta-area">
-          <p class="placeholder">Step 1 (Baseline) 분석 후 Delta가 표시됩니다.</p>
-        </div>
+        <div id="delta-area"><p class="placeholder">S1 완료 후 Delta 표시</p></div>
       </div>
-    </div>
-
-    <!-- Log -->
-    <div class="log-section">
-      <h3>Log</h3>
-      <div class="log-area" id="log-area"></div>
     </div>
   </div>
 
-  <!-- Scripts: runtime-config FIRST -->
-  <script src="/runtime-config.js"></script>
-  <script src="/extreme.js"></script>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Sessions</span>
+      <button class="btn-new" id="btn-new-session">+ New</button>
+    </div>
+    <div class="session-list" id="session-list">
+      <p class="placeholder">닉네임 입력 후 세션 표시</p>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-section">
+    <h3>Log</h3>
+    <div class="log-area" id="log-area"></div>
+  </div>
+</div>
+
+<script src="/runtime-config.js"></script>
+<script src="/extreme.js"></script>
 </body>
 </html>
