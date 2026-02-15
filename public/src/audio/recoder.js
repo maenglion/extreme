@@ -1,0 +1,68 @@
+// ============================================================
+// CASP Extreme v0 — Recorder
+// ============================================================
+import { STATE, getCurrentSession, now } from "../state/sessionStore.js";
+import { DOM, log } from "../ui/dom.js";
+import { updateButtons } from "../ui/actions.js";
+import { renderStepResult, highlightStepResult, renderSessionList } from "../ui/render.js";
+import { uploadChunk, notifyStreamStart, notifyStreamEnd, requestStepAnalyze } from "../api/extremeApi.js";
+import { acquireTabAudio } from "./tabAudio.js";
+
+export async function startRecording() {
+  if(STATE.viewMode)return;
+  if(!STATE.nickname){alert("Nickname 입력");return;}
+  const session=getCurrentSession();
+  if(!session){alert("New Session 먼저");return;}
+  const step=STATE.currentStep,sd=session.steps[step];
+  if(sd.isDone){alert("이미 완료된 Step");return;}
+  const ok=await acquireTabAudio();if(!ok)return;
+
+  const as=new MediaStream([STATE.audioTrack]);
+  const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm";
+  const rec=new MediaRecorder(as,{mimeType:mime});
+  STATE.mediaRecorder=rec;sd.chunksCount=0;
+
+  rec.ondataavailable=(e)=>{if(e.data.size>0){uploadChunk(e.data,step,sd.chunksCount);sd.chunksCount++;}};
+  rec.onstop=async ()=>{
+    sd.isRecording=false;sd.isPaused=false;sd.isDone=true;
+    sd.voiceActiveMs=sd.chunksCount*1000;session.updatedAt=now();
+    document.querySelector(`.step-tab[data-step="${step}"]`)?.classList.add("recorded");
+    DOM.recordStatus.textContent="";DOM.recordStatus.className="record-status";
+    log(`S${step} done (${sd.chunksCount}ch)`);
+    notifyStreamEnd(step);
+    await autoStepSummary(step,session);
+    updateButtons();renderSessionList();
+  };
+  rec.onerror=()=>{sd.isRecording=false;sd.isPaused=false;updateButtons();};
+
+  notifyStreamStart(step);rec.start(1000);
+  sd.isRecording=true;sd.isPaused=false;
+  DOM.recordStatus.textContent=`● REC S${step}`;DOM.recordStatus.className="record-status active";
+  updateButtons();log(`S${step} 녹음 시작`);
+}
+
+export function pauseRecording() {
+  if(STATE.viewMode)return;
+  const s=getCurrentSession();if(!s)return;
+  const sd=s.steps[STATE.currentStep];
+  if(sd.isRecording&&STATE.mediaRecorder?.state==="recording"){
+    STATE.mediaRecorder.pause();sd.isRecording=false;sd.isPaused=true;
+    DOM.recordStatus.textContent=`⏸ S${STATE.currentStep}`;DOM.recordStatus.className="record-status paused";
+    updateButtons();log(`S${STATE.currentStep} pause`);
+  }else if(sd.isPaused&&STATE.mediaRecorder?.state==="paused"){
+    STATE.mediaRecorder.resume();sd.isRecording=true;sd.isPaused=false;
+    DOM.recordStatus.textContent=`● REC S${STATE.currentStep}`;DOM.recordStatus.className="record-status active";
+    updateButtons();log(`S${STATE.currentStep} resume`);
+  }
+}
+
+export function stopRecording() {
+  if(STATE.mediaRecorder&&STATE.mediaRecorder.state!=="inactive") STATE.mediaRecorder.stop();
+}
+
+async function autoStepSummary(step,session) {
+  const sd=session.steps[step];
+  const result = await requestStepAnalyze(step, sd);
+  sd.result = result;
+  renderStepResult(step,sd.result);highlightStepResult(step);updateButtons();
+}
