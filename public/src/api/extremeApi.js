@@ -8,7 +8,7 @@ import { generateMockResult, fakeSleep } from "../mock/mockResult.js";
 
 export function getMeta(step) {
   const s=getCurrentSession();
-  return {sid:s?.engine_sid||s?.sid||"",nickname:STATE.nickname,dimension:STATE.dimension,target:STATE.target,protocol:STATE.protocol,step,pace_tag:s?.stepTags[step]||""};
+  return {sid:s?.engine_sid||"",nickname:STATE.nickname,dimension:STATE.dimension,target:STATE.target,protocol:STATE.protocol,step,pace_tag:s?.stepTags[step]||""};
 }
 
 /**
@@ -18,6 +18,11 @@ export function getMeta(step) {
  */
 export async function requestStepAnalyze(step, sd) {
   if(isServerConfigured()){
+    const s=getCurrentSession();
+    if(!s?.engine_sid){
+      log(`[engine] engine_sid missing — check API key or /engine/start failed. Using mock.`);
+      return generateMockResult(step,sd);
+    }
     try{
       const meta=getMeta(step);
       const fd=new FormData();

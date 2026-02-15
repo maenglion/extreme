@@ -1,7 +1,7 @@
 // ============================================================
 // CASP Extreme v0 — Entry Point (ES Module)
 // ============================================================
-import { API_BASE, STEP_COUNT, METRICS } from "./config.js";
+import { API_BASE, STEP_COUNT, METRICS, isServerConfigured } from "./config.js";
 import { STATE, getCurrentSession, getProfile, startNewSession, switchToSession, now } from "./state/sessionStore.js";
 import { DOM, initDOM, log } from "./ui/dom.js";
 import { refreshAll, renderStepTabs, renderOverall, renderDelta } from "./ui/render.js";
@@ -16,6 +16,10 @@ _injectStopRecording(stopRecording);
 // ── Analyze Session (Overall 가중평균) ──
 async function analyzeSession() {
   const session=getCurrentSession();if(!session)return;
+  if(isServerConfigured()&&!session.engine_sid){
+    log("[engine] engine_sid missing — Overall 분석 불가. /engine/start 확인 필요.");
+    return;
+  }
   const done=[];
   for(let s=1;s<=STEP_COUNT;s++){if(session.steps[s].isDone&&session.steps[s].result)done.push(s);}
   if(done.length===0){alert("완료된 Step 없음");return;}
