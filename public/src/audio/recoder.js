@@ -5,7 +5,7 @@ import { STATE, getCurrentSession, now } from "../state/sessionStore.js";
 import { DOM, log } from "../ui/dom.js";
 import { updateButtons } from "../ui/actions.js";
 import { renderStepResult, highlightStepResult, renderSessionList } from "../ui/render.js";
-import { uploadChunk, notifyStreamStart, notifyStreamEnd, requestStepAnalyze } from "../api/extremeApi.js";
+import { requestStepAnalyze } from "../api/extremeApi.js";
 import { acquireTabAudio } from "./tabAudio.js";
 
 export async function startRecording() {
@@ -20,22 +20,34 @@ export async function startRecording() {
   const as=new MediaStream([STATE.audioTrack]);
   const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm";
   const rec=new MediaRecorder(as,{mimeType:mime});
-  STATE.mediaRecorder=rec;sd.chunksCount=0;
+  STATE.mediaRecorder=rec;
+  sd.chunksCount=0;
+  sd._chunks=[];
+  sd._mime=mime;
 
-  rec.ondataavailable=(e)=>{if(e.data.size>0){uploadChunk(e.data,step,sd.chunksCount);sd.chunksCount++;}};
+  rec.ondataavailable=(e)=>{
+    if(e.data&&e.data.size>0){
+      sd._chunks.push(e.data);
+      sd.chunksCount++;
+    }
+  };
   rec.onstop=async ()=>{
     sd.isRecording=false;sd.isPaused=false;sd.isDone=true;
     sd.voiceActiveMs=sd.chunksCount*1000;session.updatedAt=now();
+
+    // 단일 Blob 생성
+    sd.audioBlob=new Blob(sd._chunks||[],{type:sd._mime||"audio/webm"});
+    log(`S${step} done (${sd.chunksCount}ch, ${(sd.audioBlob.size/1024).toFixed(1)}KB)`);
+
     document.querySelector(`.step-tab[data-step="${step}"]`)?.classList.add("recorded");
     DOM.recordStatus.textContent="";DOM.recordStatus.className="record-status";
-    log(`S${step} done (${sd.chunksCount}ch)`);
-    notifyStreamEnd(step);
+
     await autoStepSummary(step,session);
     updateButtons();renderSessionList();
   };
   rec.onerror=()=>{sd.isRecording=false;sd.isPaused=false;updateButtons();};
 
-  notifyStreamStart(step);rec.start(1000);
+  rec.start(1000);
   sd.isRecording=true;sd.isPaused=false;
   DOM.recordStatus.textContent=`● REC S${step}`;DOM.recordStatus.className="record-status active";
   updateButtons();log(`S${step} 녹음 시작`);

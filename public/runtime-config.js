@@ -2,9 +2,8 @@
 // CASP Extreme v0 — Runtime Configuration (SSOT)
 // 배포 환경에 맞게 아래 URL만 변경하면 됩니다.
 // ============================================================
-window.__RHYTHME_API_BASE__ = ""; // 나중에 Extreme 서버 URL 넣기
+window.__RHYTHME_API_BASE__ = ""; // 예: "http://localhost:8080"
+window.__CASP_API_KEY__     = ""; // 예: "xxxx" (내부 테스트 전용)
 
-// (선택) 비밀 아닌 설정만 추가 가능
-// window.__BUILD_CHANNEL__ = "dev";   // "dev" | "prod" — 표시용
-// window.__ENABLE_MOCK__ = true;       // 테스트용 mock 강제
-// ⚠️ API KEY / 토큰 / DB 정보 절대 금지
+// ⚠️ 이 키는 내부 테스트용. 프로덕션에서는 서비스 서버가 프록시해서 숨겨야 함.
+// ⚠️ DB 비밀번호 / OAuth Secret 등 절대 금지

@@ -3,6 +3,7 @@
 // ============================================================
 
 export const API_BASE = window.__RHYTHME_API_BASE__ || "";
+export const API_KEY  = window.__CASP_API_KEY__     || "";
 export function isServerConfigured() { return API_BASE !== ""; }
 
 export const STEP_COUNT = 10;
