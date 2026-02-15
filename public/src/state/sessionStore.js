@@ -1,7 +1,7 @@
 // ============================================================
 // CASP Extreme v0 — Session Store
 // ============================================================
-import { STEP_COUNT } from "../config.js";
+import { STEP_COUNT, API_BASE, API_KEY, isServerConfigured } from "../config.js";
 
 export function generateSID() { return "ex_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
 export function now() { return new Date().toISOString(); }
@@ -10,7 +10,7 @@ function createStepState() {
   return { isRecording:false, isPaused:false, isDone:false, chunksCount:0, voiceActiveMs:0, result:null };
 }
 function createSteps() { const s={}; for(let i=1;i<=STEP_COUNT;i++) s[i]=createStepState(); return s; }
-function createSession(sid) { return { sid, createdAt:now(), updatedAt:now(), steps:createSteps(), overall:null, stepTags:{} }; }
+function createSession(sid) { return { sid, engine_sid:null, createdAt:now(), updatedAt:now(), steps:createSteps(), overall:null, stepTags:{} }; }
 
 // ── Profiles ──
 const profiles = {};
@@ -32,11 +32,26 @@ export function getCurrentSession() {
   return getActiveSession(STATE.nickname);
 }
 
-export function startNewSession(refreshAllFn) {
+export async function startNewSession(refreshAllFn) {
   if(!STATE.nickname) return false;
   const p=getProfile(STATE.nickname);
   const sid=generateSID();
-  p.sessions.push(createSession(sid));
+  const session=createSession(sid);
+
+  // 서버가 있으면 engine/start로 서버 SID 획득
+  if(isServerConfigured()){
+    try{
+      const headers={"Content-Type":"application/json"};
+      if(API_KEY) headers["X-API-Key"]=API_KEY;
+      const r=await fetch(`${API_BASE}/engine/start`,{method:"POST",headers});
+      if(r.ok){
+        const j=await r.json();
+        session.engine_sid=j.sid||null;
+      }
+    }catch(e){/* engine/start 실패 시 로컬 sid만 사용 */}
+  }
+
+  p.sessions.push(session);
   p.activeSessionId=sid;
   STATE.viewMode=false; STATE.viewingSid=null;
   if(refreshAllFn) refreshAllFn();

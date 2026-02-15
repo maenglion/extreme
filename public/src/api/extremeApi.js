@@ -1,59 +1,52 @@
 // ============================================================
-// CASP Extreme v0 — API Layer (v2: single-file upload)
+// CASP Extreme v0 — API Layer
 // ============================================================
-import { API_BASE, isServerConfigured, API_KEY } from "../config.js";
+import { API_BASE, API_KEY, isServerConfigured } from "../config.js";
 import { STATE, getCurrentSession } from "../state/sessionStore.js";
 import { log } from "../ui/dom.js";
 import { generateMockResult, fakeSleep } from "../mock/mockResult.js";
 
 export function getMeta(step) {
-  const s = getCurrentSession();
-  return {
-    sid: s?.sid || "",
-    nickname: STATE.nickname,
-    dimension: STATE.dimension,
-    target: STATE.target,
-    protocol: STATE.protocol,
-    step,
-    pace_tag: s?.stepTags?.[step] || ""
-  };
+  const s=getCurrentSession();
+  return {sid:s?.engine_sid||s?.sid||"",nickname:STATE.nickname,dimension:STATE.dimension,target:STATE.target,protocol:STATE.protocol,step,pace_tag:s?.stepTags[step]||""};
 }
 
-// v2에서는 chunk 업로드/stream notify를 안 씀 (남겨두되 no-op)
-export function uploadChunk() {}
-export function notifyStreamStart() {}
-export function notifyStreamEnd() {}
-
 /**
- * Step 분석 요청: Stop 시점에 생성된 audioBlob(단일 파일)을 업로드한다.
- * server 미설정/실패 시 mock.
+ * Step 분석 요청.
+ * Stop 시점에 만들어진 sd.audioBlob을 FormData로 POST {API_BASE}/engine/analyze
+ * 서버 미설정이거나 실패 시 mock 반환.
  */
 export async function requestStepAnalyze(step, sd) {
-  if (isServerConfigured()) {
-    try {
-      if (!sd?.audioBlob) throw new Error("No audioBlob: stop first");
+  if(isServerConfigured()){
+    try{
+      const meta=getMeta(step);
+      const fd=new FormData();
 
-      const fd = new FormData();
-      fd.append("file", sd.audioBlob, `S${step}.webm`);
-      fd.append("meta", JSON.stringify(getMeta(step)));
+      // 오디오 파일
+      if(sd.audioBlob){
+        fd.append("file", sd.audioBlob, `step_${step}.webm`);
+      }
 
-      const r = await fetch(`${API_BASE}/engine/analyze`, {
-        method: "POST",
-        headers: {
-          "X-API-Key": API_KEY,
-        },
-        body: fd,
+      // 메타데이터 필드
+      Object.entries(meta).forEach(([k,v])=>fd.append(k,String(v)));
+
+      const headers = {};
+      if(API_KEY) headers["X-API-Key"] = API_KEY;
+
+      const r=await fetch(`${API_BASE}/engine/analyze`,{
+        method:"POST",
+        headers,
+        body:fd,
       });
-
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
       return await r.json();
-    } catch (e) {
+    }catch(e){
       log(`[api-fail] S${step}: ${e.message}, using mock`);
-      return generateMockResult(step, sd);
+      return generateMockResult(step,sd);
     }
-  } else {
+  }else{
     await fakeSleep(300);
     log(`[no-server] S${step} mock`);
-    return generateMockResult(step, sd);
+    return generateMockResult(step,sd);
   }
 }
