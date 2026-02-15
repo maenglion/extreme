@@ -32,30 +32,29 @@ export function getCurrentSession() {
   return getActiveSession(STATE.nickname);
 }
 
-export async function startNewSession(refreshAllFn) {
-  if(!STATE.nickname) return false;
-  const p=getProfile(STATE.nickname);
-  const sid=generateSID();
-  const session=createSession(sid);
+export async function startNewSession() {
+  // 1) 로컬 세션은 무조건 생성 (여기서 s1~s10 steps가 세팅돼야 함)
+  const session = createSession(/* 기존 로직 그대로 */);
+  STATE.profiles[STATE.nickname].sessions.unshift(session);
+  STATE.activeSessionId = session.sid;   // 로컬 sid
 
-  // 서버가 있으면 engine/start로 서버 SID 획득
-  if(isServerConfigured()){
-    try{
-      const headers={"Content-Type":"application/json"};
-      if(API_KEY) headers["X-API-Key"]=API_KEY;
-      const r=await fetch(`${API_BASE}/engine/start`,{method:"POST",headers});
-      if(r.ok){
-        const j=await r.json();
-        session.engine_sid=j.sid||null;
+  // 2) 서버가 있으면 engine_sid만 추가
+  try {
+    if (isServerConfigured() && API_KEY) {
+      const r = await fetch(`${API_BASE}/engine/start`, {
+        method: "POST",
+        headers: { "X-API-Key": API_KEY },
+      });
+      if (r.ok) {
+        const j = await r.json();
+        session.engine_sid = j.sid;
       }
-    }catch(e){/* engine/start 실패 시 로컬 sid만 사용 */}
+    }
+  } catch (e) {
+    // 실패해도 무시: 로컬 세션은 이미 살아있음
   }
 
-  p.sessions.push(session);
-  p.activeSessionId=sid;
-  STATE.viewMode=false; STATE.viewingSid=null;
-  if(refreshAllFn) refreshAllFn();
-  return sid;
+  return session;
 }
 
 export function switchToSession(sid, refreshAllFn) {
