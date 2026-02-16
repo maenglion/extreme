@@ -1,15 +1,15 @@
 // ============================================================
-// CASP Extreme v0 — API Layer (4-Endpoint Architecture)
+// CASP Extreme v0 — API Layer (Netlify Proxy Architecture)
 // ──────────────────────────────────────────────────────────
-// 1. Ingest   POST /engine/start          세션 생성 (sessionStore에서 호출)
-//             POST /engine/ingest          오디오 업로드
-// 2. Analyze  POST /engine/analyze         Step 단위 엔진 실행
-// 3. Report   GET  /engine/report/:sid     세션 Overall / Delta 조회
-// 4. Reference GET /engine/reference       보정·참조값 조회
-// ──────────────────────────────────────────────────────────
-// 인증(X-API-Key 등)은 서버 프록시가 처리 — 프론트는 키 없이 호출
+// 프론트 → Netlify Functions(프록시) → 백엔드
+// 인증(X-API-Key)은 Netlify 서버에서만 처리, 프론트에 키 없음
+//
+// /.netlify/functions/engine-start    세션 생성 (sessionStore에서 호출)
+// /.netlify/functions/engine-ingest   오디오 업로드
+// /.netlify/functions/engine-analyze  Step 분석
+// /.netlify/functions/engine-report   Overall/Delta 조회
 // ============================================================
-import { API_BASE, isServerConfigured } from "../config.js";
+import { isServerConfigured } from "../config.js";
 import { STATE, getCurrentSession } from "../state/sessionStore.js";
 import { log } from "../ui/dom.js";
 import { generateMockResult, fakeSleep } from "../mock/mockResult.js";
@@ -45,7 +45,7 @@ export async function ingestAudio(step, sd) {
     }
     Object.entries(meta).forEach(([k, v]) => fd.append(k, String(v)));
 
-    const r = await fetch(`${API_BASE}/engine/ingest`, {
+    const r = await fetch(`/.netlify/functions/engine-ingest`, {
       method: "POST",
       body: fd,
     });
@@ -75,7 +75,7 @@ export async function requestStepAnalyze(step, sd) {
 
     // Step 2: Analyze (엔진 실행)
     try {
-      const r = await fetch(`${API_BASE}/engine/analyze`, {
+      const r = await fetch(`/.netlify/functions/engine-analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(getMeta(step)),
@@ -100,26 +100,11 @@ export async function fetchReport() {
   const s = getCurrentSession();
   if (!isServerConfigured() || !s?.engine_sid) return null;
   try {
-    const r = await fetch(`${API_BASE}/engine/report/${s.engine_sid}`);
+    const r = await fetch(`/.netlify/functions/engine-report?sid=${s.engine_sid}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } catch (e) {
     log(`[report-fail] ${e.message}`);
-    return null;
-  }
-}
-
-// ══════════════════════════════════════
-//  4. REFERENCE — 보정·참조값 조회
-// ══════════════════════════════════════
-export async function fetchReference() {
-  if (!isServerConfigured()) return null;
-  try {
-    const r = await fetch(`${API_BASE}/engine/reference`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } catch (e) {
-    log(`[reference-fail] ${e.message}`);
     return null;
   }
 }

@@ -1,7 +1,7 @@
 // ============================================================
 // CASP Extreme v0 — Session Store
 // ============================================================
-import { STEP_COUNT, API_BASE, isServerConfigured } from "../config.js";
+import { STEP_COUNT, isServerConfigured } from "../config.js";
 
 export function generateSID() { return "ex_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
 export function now() { return new Date().toISOString(); }
@@ -38,13 +38,12 @@ export async function startNewSession(refreshAllFn) {
   const sid=generateSID();
   const session=createSession(sid);
 
-  // 서버가 있으면 engine/start로 서버 SID 획득
+  // 서버가 있으면 Netlify proxy → engine/start로 서버 SID 획득
   if(isServerConfigured()){
     try{
-      const r=await fetch(`${API_BASE}/engine/start`,{
+      const r=await fetch(`/.netlify/functions/engine-start`,{
         method:"POST",
-        headers:{ "Content-Type":"application/json",
-  "x-api-key": API_KEY_HASH,},
+        headers:{"Content-Type":"application/json"},
       });
       if(r.ok){
         const j=await r.json();
