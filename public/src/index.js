@@ -8,12 +8,14 @@ import { refreshAll, renderStepTabs, renderOverall, renderDelta } from "./ui/ren
 import { selectStep, updateButtons } from "./ui/actions.js";
 import { updateStreamInfo, _injectStopRecording } from "./audio/tabAudio.js";
 import { startRecording, pauseRecording, stopRecording } from "./audio/recorder.js";
+import { fetchReport } from "./api/extremeApi.js";
 import { fakeSleep } from "./mock/mockResult.js";
 
 // Wire circular dependency: tabAudio needs stopRecording from recorder
 _injectStopRecording(stopRecording);
 
-// ── Analyze Session (Overall 가중평균) ──
+// ── Analyze Session (Overall) ──
+// 서버 있으면 /engine/report에서 가져오고, 없으면 프론트 가중평균
 async function analyzeSession() {
   const session=getCurrentSession();if(!session)return;
   if(isServerConfigured()&&!session.engine_sid){
@@ -26,8 +28,23 @@ async function analyzeSession() {
 
   DOM.btnAnalyze.disabled=true;
   DOM.btnAnalyze.querySelector(".btn-text").textContent="⏳ 분석 중...";
-  await fakeSleep(400);
 
+  // 서버 모드: Report 엔드포인트에서 Overall/Delta 수신
+  if(isServerConfigured()&&session.engine_sid){
+    const report=await fetchReport();
+    if(report&&report.overall){
+      session.overall=report.overall;session.updatedAt=now();
+      renderOverall(session);renderDelta(session);
+      log(`Overall 완료 (서버 report)`);
+      DOM.btnAnalyze.querySelector(".btn-text").textContent="📊 Analyze (Overall)";
+      DOM.btnAnalyze.disabled=false;
+      return;
+    }
+    log("[report] 서버 응답 없음, 프론트 계산으로 fallback");
+  }
+
+  // Fallback: 프론트 가중평균
+  await fakeSleep(400);
   let totalDur=0;
   done.forEach(s=>{totalDur+=session.steps[s].result.voice_duration_sec||1;});
   const overall={};
@@ -36,7 +53,7 @@ async function analyzeSession() {
   session.overall=overall;session.updatedAt=now();
 
   renderOverall(session);renderDelta(session);
-  log(`Overall 완료 (${done.length} steps)`);
+  log(`Overall 완료 (${done.length} steps, 프론트 계산)`);
   DOM.btnAnalyze.querySelector(".btn-text").textContent="📊 Analyze (Overall)";
   DOM.btnAnalyze.disabled=false;
 }

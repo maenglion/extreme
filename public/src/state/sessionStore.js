@@ -1,7 +1,7 @@
 // ============================================================
 // CASP Extreme v0 — Session Store
 // ============================================================
-import { STEP_COUNT, API_BASE, API_KEY, isServerConfigured } from "../config.js";
+import { STEP_COUNT, API_BASE, isServerConfigured } from "../config.js";
 
 export function generateSID() { return "ex_"+Date.now()+"_"+Math.random().toString(36).slice(2,8); }
 export function now() { return new Date().toISOString(); }
@@ -32,29 +32,31 @@ export function getCurrentSession() {
   return getActiveSession(STATE.nickname);
 }
 
-export async function startNewSession() {
-  // 1) 로컬 세션은 무조건 생성 (여기서 s1~s10 steps가 세팅돼야 함)
-  const session = createSession(/* 기존 로직 그대로 */);
-  STATE.profiles[STATE.nickname].sessions.unshift(session);
-  STATE.activeSessionId = session.sid;   // 로컬 sid
+export async function startNewSession(refreshAllFn) {
+  if(!STATE.nickname) return false;
+  const p=getProfile(STATE.nickname);
+  const sid=generateSID();
+  const session=createSession(sid);
 
-  // 2) 서버가 있으면 engine_sid만 추가
-  try {
-    if (isServerConfigured() && API_KEY) {
-      const r = await fetch(`${API_BASE}/engine/start`, {
-        method: "POST",
-        headers: { "X-API-Key": API_KEY },
+  // 서버가 있으면 engine/start로 서버 SID 획득
+  if(isServerConfigured()){
+    try{
+      const r=await fetch(`${API_BASE}/engine/start`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
       });
-      if (r.ok) {
-        const j = await r.json();
-        session.engine_sid = j.sid;
+      if(r.ok){
+        const j=await r.json();
+        session.engine_sid=j.sid||null;
       }
-    }
-  } catch (e) {
-    // 실패해도 무시: 로컬 세션은 이미 살아있음
+    }catch(e){/* engine/start 실패 시 로컬 sid만 사용 */}
   }
 
-  return session;
+  p.sessions.push(session);
+  p.activeSessionId=sid;
+  STATE.viewMode=false; STATE.viewingSid=null;
+  if(refreshAllFn) refreshAllFn();
+  return sid;
 }
 
 export function switchToSession(sid, refreshAllFn) {

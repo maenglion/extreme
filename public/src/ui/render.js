@@ -38,10 +38,12 @@ export function renderSessionList() {
     const isAct=s.sid===p.activeSessionId;
     const isView=s.sid===viewSid;
     const done=Object.values(s.steps).filter(st=>st.isDone).length;
+    const pct=Math.round(done/STEP_COUNT*100);
     const time=new Date(s.createdAt).toLocaleTimeString();
     return `<div class="session-item ${isAct?"active-session":"past-session"} ${isView?"viewing":""}" data-sid="${s.sid}">
       <div class="session-item-top"><span class="session-sid">${s.sid.slice(-10)}</span>${isAct?'<span class="session-active-badge">LIVE</span>':""}</div>
-      <div class="session-item-bottom"><span>${time}</span><span>${done}/${STEP_COUNT}</span></div></div>`;
+      <div class="session-item-bottom"><span>${time}</span><span>S${done}/${STEP_COUNT}</span></div>
+      <div class="session-progress"><div class="session-progress-bar" style="width:${pct}%"></div></div></div>`;
   }).join("");
   DOM.sessionList.querySelectorAll(".session-item").forEach(el=>{
     el.addEventListener("click",()=>switchToSession(el.dataset.sid, refreshAll));
