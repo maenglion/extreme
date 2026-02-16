@@ -43,7 +43,8 @@ export async function startNewSession(refreshAllFn) {
     try{
       const r=await fetch(`${API_BASE}/engine/start`,{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{ "Content-Type":"application/json",
+  "x-api-key": API_KEY_HASH,},
       });
       if(r.ok){
         const j=await r.json();
