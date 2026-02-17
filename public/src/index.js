@@ -7,7 +7,7 @@ import { DOM, initDOM, log } from "./ui/dom.js";
 import { refreshAll, renderStepTabs, renderOverall, renderDelta } from "./ui/render.js";
 import { selectStep, updateButtons } from "./ui/actions.js";
 import { updateStreamInfo, _injectStopRecording } from "./audio/tabAudio.js";
-import { startRecording, pauseRecording, stopRecording } from "./audio/recorder.js";
+import { startRecording, pauseRecording, stopRecording, initCtrlChannel } from "./audio/recorder.js";
 import { fetchReport } from "./api/extremeApi.js";
 import { fakeSleep } from "./mock/mockResult.js";
 
@@ -67,10 +67,16 @@ function bindEvents() {
     if(!p.activeSessionId){
       const sid=await startNewSession(refreshAll);
       if(sid){
+        initCtrlChannel(sid);
         const s=getCurrentSession();
         log(`새 세션: ${sid}${s?.engine_sid?" | engine:"+s.engine_sid:""}`);
       }
-    }else{refreshAll();}
+    }else{
+      // 기존 세션 복원 시에도 채널 초기화
+      const s=getCurrentSession();
+      if(s) initCtrlChannel(s.sid);
+      refreshAll();
+    }
     log(`닉네임: ${n}`);
   });
   DOM.dimension.addEventListener("change",(e)=>{STATE.dimension=e.target.value;});
@@ -83,6 +89,7 @@ function bindEvents() {
     if(!STATE.nickname){alert("Nickname 먼저 입력");DOM.nickname.focus();return;}
     const sid=await startNewSession(refreshAll);
     if(sid){
+      initCtrlChannel(sid);
       const s=getCurrentSession();
       log(`새 세션: ${sid}${s?.engine_sid?" | engine:"+s.engine_sid:""}`);
     }
@@ -103,4 +110,9 @@ document.addEventListener("DOMContentLoaded",()=>{
   updateButtons();
   log(`Extreme v0 | API: ${API_BASE||"(미설정)"}`);
   log("닉네임 입력 → Enter → 세션 자동 생성");
+});
+
+// 탭/창 닫힐 때 캡처 트랙 강제 종료 → "공유중" 배너 제거
+window.addEventListener("beforeunload", () => {
+  try { stopRecording(); } catch(e){}
 });

@@ -68,8 +68,41 @@ export function pauseRecording() {
   }
 }
 
+// ── BroadcastChannel: 창 간 STOP 동기화 ──
+let _ctrlChannel = null;
+
+export function initCtrlChannel(sessionId) {
+  if(_ctrlChannel) _ctrlChannel.close();
+  _ctrlChannel = new BroadcastChannel(`extreme-ctrl:${sessionId}`);
+  _ctrlChannel.onmessage = (e) => {
+    if(e.data?.type === "STOP_ALL") {
+      log("[broadcast] STOP 수신 — 녹음/캡처 종료");
+      hardStop();
+    }
+  };
+}
+
+// ── 캡처 트랙 + 레코더 강제 종료 ──
+function hardStop() {
+  // 1. MediaRecorder 종료
+  if(STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive"){
+    STATE.mediaRecorder.stop();
+  }
+  // 2. displayMedia 캡처 트랙 종료 → "공유중" 배너 제거
+  if(STATE.displayStream){
+    STATE.displayStream.getTracks().forEach(t => t.stop());
+    STATE.displayStream = null;
+    STATE.audioTrack = null;
+  }
+  updateStreamInfo();
+}
+
 export function stopRecording() {
-  if(STATE.mediaRecorder&&STATE.mediaRecorder.state!=="inactive") STATE.mediaRecorder.stop();
+  hardStop();
+  // 다른 창에도 STOP 신호 전파
+  if(_ctrlChannel){
+    try { _ctrlChannel.postMessage({ type: "STOP_ALL" }); } catch(e){}
+  }
 }
 
 async function autoStepSummary(step,session) {
