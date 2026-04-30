@@ -1,36 +1,77 @@
-// Netlify Function — POST /.netlify/functions/engine-analyze
-export default async (req) => {
-  const API_BASE    = process.env.API_BASE;
-  const API_KEY_HASH = process.env.API_KEY_HASH;
-
-  if (!API_BASE) {
-    return new Response(JSON.stringify({ error: "API_BASE not configured" }), {
-      status: 500,
+exports.handler = async function (event) {
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
       headers: { "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
+    };
+  }
+
+  const base = process.env.CASP_ENGINE_BASE;
+  const apiKey = process.env.CASP_API_KEY;
+
+  if (!base || !apiKey) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        error: "missing_server_env",
+        hasBase: Boolean(base),
+        hasApiKey: Boolean(apiKey),
+      }),
+    };
+  }
+
+  const contentType =
+    event.headers["content-type"] ||
+    event.headers["Content-Type"];
+
+  if (!contentType || !contentType.includes("multipart/form-data")) {
+    return {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        error: "expected_multipart_form_data",
+        contentType: contentType || null,
+      }),
+    };
   }
 
   try {
-    const body = await req.text();
+    const bodyBuffer = event.isBase64Encoded
+      ? Buffer.from(event.body || "", "base64")
+      : Buffer.from(event.body || "", "utf8");
 
-    const r = await fetch(`${API_BASE}/engine/analyze`, {
+    const res = await fetch(`${base}/engine/analyze`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        ...(API_KEY_HASH ? { "x-api-key": API_KEY_HASH } : {}),
+        "X-API-Key": apiKey,
+        "Content-Type": contentType,
       },
-      body,
+      body: bodyBuffer,
     });
 
-    const text = await r.text();
-    return new Response(text, {
-      status: r.status,
-      headers: { "Content-Type": r.headers.get("content-type") ?? "application/json" },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 502,
+    const text = await res.text();
+
+    return {
+      statusCode: res.status,
+      headers: {
+        "Content-Type":
+          res.headers.get("content-type") || "application/json",
+      },
+      body: text,
+    };
+  } catch (err) {
+    return {
+      statusCode: 502,
       headers: { "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({
+        ok: false,
+        error: "proxy_failed",
+        detail: String(err && err.message ? err.message : err),
+      }),
+    };
   }
 };
