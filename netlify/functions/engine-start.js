@@ -1,35 +1,53 @@
-// netlify/functions/engine-start.js
-exports.handler = async function (event) {
-  try {
-    const API_BASE = process.env.API_BASE;
-    const API_KEY_HASH = process.env.API_KEY_HASH;
-
-    if (!API_BASE || !API_KEY_HASH) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: "Missing API_BASE or API_KEY_HASH" }),
-      };
-    }
-
-    const res = await fetch(`${API_BASE}/engine/start`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": API_KEY_HASH,
-      },
-      body: event.body || "{}",
-    });
-
-    const body = await res.text();
+export async function handler(event) {
+  if (event.httpMethod !== "POST") {
     return {
-      statusCode: res.status,
-      headers: { "Content-Type": res.headers.get("content-type") || "application/json" },
-      body,
-    };
-  } catch (e) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: String(e && e.message ? e.message : e) }),
+      statusCode: 405,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ok: false, error: "method_not_allowed" }),
     };
   }
-};
+
+  const base = process.env.CASP_ENGINE_BASE;
+  const apiKey = process.env.CASP_API_KEY;
+
+  if (!base || !apiKey) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        error: "missing_server_env",
+        required: ["CASP_ENGINE_BASE", "CASP_API_KEY"],
+      }),
+    };
+  }
+
+  try {
+    const res = await fetch(`${base}/engine/start`, {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+      },
+    });
+
+    const text = await res.text();
+
+    return {
+      statusCode: res.status,
+      headers: {
+        "Content-Type": res.headers.get("content-type") || "application/json",
+      },
+      body: text,
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        error: "proxy_failed",
+        detail: String(err?.message || err),
+      }),
+    };
+  }
+}
