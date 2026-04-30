@@ -1,110 +1,132 @@
 // ============================================================
 // CASP Extreme v0 — API Layer (Netlify Proxy Architecture)
 // ──────────────────────────────────────────────────────────
-// 프론트 → Netlify Functions(프록시) → 백엔드
-// 인증(X-API-Key)은 Netlify 서버에서만 처리, 프론트에 키 없음
+// 프론트 → Netlify Functions(BFF) → casp-engine-api
+// 인증(X-API-Key)은 Netlify 서버에서만 처리, 프론트에 키 없음.
 //
-// /.netlify/functions/engine-start    세션 생성 (sessionStore에서 호출)
-// /.netlify/functions/engine-ingest   오디오 업로드
-// /.netlify/functions/engine-analyze  Step 분석
-// /.netlify/functions/engine-report   Overall/Delta 조회
+// 현재 사용:
+//   /api/engine-start    세션 생성
+//   /api/engine-analyze  오디오 + meta 분석
+//   /api/engine-report   결과 조회
+//
+// 사용하지 않음:
+//   engine-ingest
+//   mockResult
 // ============================================================
-import { isServerConfigured } from "../config.js";
+
 import { STATE, getCurrentSession } from "../state/sessionStore.js";
 import { log } from "../ui/dom.js";
-import { generateMockResult, fakeSleep } from "../mock/mockResult.js";
 
 // ── 공통 메타 ──
 export function getMeta(step) {
   const s = getCurrentSession();
+
   return {
-    sid: s?.engine_sid || "",
-    nickname: STATE.nickname,
-    dimension: STATE.dimension,
-    target: STATE.target,
-    protocol: STATE.protocol,
+    sid: s?.engine_sid || "",              // CASP engine UUID
+    client_sid: s?.id || s?.sid || "",     // ex_... 프론트 로컬 SID
+    uid: "anon",
+    stage_id: step,
     step,
-    pace_tag: s?.stepTags[step] || "",
+    nickname: STATE.nickname || "",
+    dimension: STATE.dimension || "",
+    target: STATE.target || "",
+    protocol: STATE.protocol || "",
+    pace_tag: s?.stepTags?.[step] || "",
+  };
+}
+
+function makeClientError(step, code, message, extra = {}) {
+  return {
+    ok: false,
+    source: "client_error",
+    error: code,
+    detail: message,
+    step,
+    raw: null,
+    calibrated: null,
+    features_preview: null,
+    debug_feature_source: null,
+    debug_feature_error: message,
+    ...extra,
   };
 }
 
 // ══════════════════════════════════════
-//  1. INGEST — 오디오 업로드
+//  ANALYZE — Step 단위 엔진 분석
 // ══════════════════════════════════════
-export async function ingestAudio(step, sd) {
+export async function requestStepAnalyze(step, sd) {
   const s = getCurrentSession();
+
   if (!s?.engine_sid) {
-    log(`[ingest] engine_sid missing — skip upload`);
-    return null;
+    const msg = "engine_sid missing — call /api/engine-start first";
+    log(`[analyze-blocked] S${step}: ${msg}`);
+    return makeClientError(step, "engine_sid_missing", msg);
   }
+
+  if (!sd?.audioBlob) {
+    const msg = "audioBlob missing";
+    log(`[analyze-blocked] S${step}: ${msg}`);
+    return makeClientError(step, "audio_blob_missing", msg);
+  }
+
   try {
     const meta = getMeta(step);
-    const fd = new FormData();
-    if (sd.audioBlob) {
-      fd.append("file", sd.audioBlob, `step_${step}.webm`);
-    }
-    Object.entries(meta).forEach(([k, v]) => fd.append(k, String(v)));
 
-    const r = await fetch(`/.netlify/functions/engine-ingest`, {
+    const fd = new FormData();
+    fd.append("file", sd.audioBlob, `step_${step}.webm`);
+    fd.append("meta", JSON.stringify(meta));
+
+    const r = await fetch("/api/engine-analyze", {
       method: "POST",
       body: fd,
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
     const j = await r.json();
-    log(`[ingest] S${step} uploaded (${(sd.audioBlob?.size / 1024).toFixed(1)}KB)`);
+
+    if (!r.ok) {
+      throw new Error(j?.error || j?.detail || `HTTP ${r.status}`);
+    }
+
+    log(
+      `[analyze] S${step} ${j.debug_feature_source || "server"} ` +
+      `pause=${j.features_preview?.pause_ratio ?? "n/a"} ` +
+      `snr=${j.features_preview?.snr_db_proxy ?? "n/a"}`
+    );
+
     return j;
   } catch (e) {
-    log(`[ingest-fail] S${step}: ${e.message}`);
-    return null;
+    const msg = e?.message || String(e);
+    log(`[analyze-fail] S${step}: ${msg}`);
+
+    return makeClientError(step, "analyze_failed", msg);
   }
 }
 
 // ══════════════════════════════════════
-//  2. ANALYZE — Step 단위 엔진 실행
-// ══════════════════════════════════════
-export async function requestStepAnalyze(step, sd) {
-  if (isServerConfigured()) {
-    const s = getCurrentSession();
-    if (!s?.engine_sid) {
-      log(`[engine] engine_sid missing — check /engine/start. Using mock.`);
-      return generateMockResult(step, sd);
-    }
-
-    // Step 1: Ingest (업로드)
-    await ingestAudio(step, sd);
-
-    // Step 2: Analyze (엔진 실행)
-    try {
-      const r = await fetch(`/.netlify/functions/engine-analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(getMeta(step)),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      log(`[analyze-fail] S${step}: ${e.message}, using mock`);
-      return generateMockResult(step, sd);
-    }
-  } else {
-    await fakeSleep(300);
-    log(`[no-server] S${step} mock`);
-    return generateMockResult(step, sd);
-  }
-}
-
-// ══════════════════════════════════════
-//  3. REPORT — 세션 Overall / Delta 조회
+//  REPORT — 세션 결과 조회
 // ══════════════════════════════════════
 export async function fetchReport() {
   const s = getCurrentSession();
-  if (!isServerConfigured() || !s?.engine_sid) return null;
+
+  if (!s?.engine_sid) {
+    log("[report-blocked] engine_sid missing");
+    return null;
+  }
+
   try {
-    const r = await fetch(`/.netlify/functions/engine-report?sid=${s.engine_sid}`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
+    const r = await fetch(
+      `/api/engine-report?sid=${encodeURIComponent(s.engine_sid)}`
+    );
+
+    const j = await r.json();
+
+    if (!r.ok) {
+      throw new Error(j?.error || j?.detail || `HTTP ${r.status}`);
+    }
+
+    return j;
   } catch (e) {
-    log(`[report-fail] ${e.message}`);
+    log(`[report-fail] ${e?.message || String(e)}`);
     return null;
   }
 }
