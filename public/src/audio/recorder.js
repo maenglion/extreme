@@ -6,7 +6,7 @@ import { DOM, log } from "../ui/dom.js";
 import { updateButtons } from "../ui/actions.js";
 import { renderStepResult, highlightStepResult, renderSessionList } from "../ui/render.js";
 import { requestStepAnalyze } from "../api/extremeApi.js";
-import { acquireTabAudio } from "./tabAudio.js";
+import { acquireTabAudio, updateStreamInfo } from "./tabAudio.js";
 
 export async function startRecording() {
   if(STATE.viewMode)return;
@@ -35,9 +35,17 @@ export async function startRecording() {
     sd.isRecording=false;sd.isPaused=false;sd.isDone=true;
     sd.voiceActiveMs=sd.chunksCount*1000;session.updatedAt=now();
 
-    // 단일 Blob 생성
     sd.audioBlob=new Blob(sd._chunks||[],{type:sd._mime||"audio/webm"});
     log(`S${step} done (${sd.chunksCount}ch, ${(sd.audioBlob.size/1024).toFixed(1)}KB)`);
+
+    // 방어: Blob이 너무 작으면 서버 전송 스킵
+    if (!sd.audioBlob || sd.audioBlob.size < 1024) {
+      log(`[recording-error] S${step} audioBlob too small (${sd.audioBlob?.size || 0} bytes)`);
+      sd.isDone = false;
+      updateButtons();
+      renderSessionList();
+      return;
+    }
 
     document.querySelector(`.step-tab[data-step="${step}"]`)?.classList.add("recorded");
     DOM.recordStatus.textContent="";DOM.recordStatus.className="record-status";
@@ -68,7 +76,6 @@ export function pauseRecording() {
   }
 }
 
-// ── BroadcastChannel: 창 간 STOP 동기화 ──
 let _ctrlChannel = null;
 
 export function initCtrlChannel(sessionId) {
@@ -82,13 +89,10 @@ export function initCtrlChannel(sessionId) {
   };
 }
 
-// ── 캡처 트랙 + 레코더 강제 종료 ──
 function hardStop() {
-  // 1. MediaRecorder 종료
   if(STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive"){
     STATE.mediaRecorder.stop();
   }
-  // 2. displayMedia 캡처 트랙 종료 → "공유중" 배너 제거
   if(STATE.displayStream){
     STATE.displayStream.getTracks().forEach(t => t.stop());
     STATE.displayStream = null;
@@ -99,7 +103,6 @@ function hardStop() {
 
 export function stopRecording() {
   hardStop();
-  // 다른 창에도 STOP 신호 전파
   if(_ctrlChannel){
     try { _ctrlChannel.postMessage({ type: "STOP_ALL" }); } catch(e){}
   }
