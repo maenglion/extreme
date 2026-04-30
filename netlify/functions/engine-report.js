@@ -1,40 +1,80 @@
-// Netlify Function — GET /.netlify/functions/engine-report?sid=xxx
-export default async (req) => {
-  const API_BASE    = process.env.API_BASE;
-  const API_KEY_HASH = process.env.API_KEY_HASH;
+const BFF_VERSION = "engine-report-v1";
 
-  const url = new URL(req.url);
-  const sid = url.searchParams.get("sid");
-  if (!sid) {
-    return new Response(JSON.stringify({ error: "sid required" }), {
-      status: 400,
+exports.handler = async function (event) {
+  if (event.httpMethod !== "GET") {
+    return {
+      statusCode: 405,
       headers: { "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({
+        ok: false,
+        bffVersion: BFF_VERSION,
+        error: "method_not_allowed",
+      }),
+    };
   }
 
-  if (!API_BASE) {
-    return new Response(JSON.stringify({ error: "API_BASE not configured" }), {
-      status: 500,
+  const base = process.env.CASP_ENGINE_BASE;
+  const apiKey = process.env.CASP_API_KEY;
+
+  if (!base || !apiKey) {
+    return {
+      statusCode: 500,
       headers: { "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({
+        ok: false,
+        bffVersion: BFF_VERSION,
+        error: "missing_server_env",
+        hasBase: Boolean(base),
+        hasApiKey: Boolean(apiKey),
+      }),
+    };
+  }
+
+  const params = event.queryStringParameters || {};
+  const sid = params.sid;
+
+  if (!sid) {
+    return {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ok: false,
+        bffVersion: BFF_VERSION,
+        error: "sid_required",
+      }),
+    };
   }
 
   try {
-    const r = await fetch(`${API_BASE}/engine/report/${sid}`, {
-      headers: {
-        ...(API_KEY_HASH ? { "x-api-key": API_KEY_HASH } : {}),
-      },
-    });
+    const res = await fetch(
+      `${base}/engine/result/${encodeURIComponent(sid)}`,
+      {
+        method: "GET",
+        headers: {
+          "X-API-Key": apiKey,
+        },
+      }
+    );
 
-    const text = await r.text();
-    return new Response(text, {
-      status: r.status,
-      headers: { "Content-Type": r.headers.get("content-type") ?? "application/json" },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 502,
+    const text = await res.text();
+
+    return {
+      statusCode: res.status,
+      headers: {
+        "Content-Type": res.headers.get("content-type") || "application/json",
+      },
+      body: text,
+    };
+  } catch (err) {
+    return {
+      statusCode: 502,
       headers: { "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({
+        ok: false,
+        bffVersion: BFF_VERSION,
+        error: "proxy_failed",
+        detail: String(err && err.message ? err.message : err),
+      }),
+    };
   }
 };
