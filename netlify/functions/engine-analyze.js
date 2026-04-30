@@ -58,8 +58,7 @@ exports.handler = async function (event) {
     return {
       statusCode: res.status,
       headers: {
-        "Content-Type":
-          res.headers.get("content-type") || "application/json",
+        "Content-Type": res.headers.get("content-type") || "application/json",
       },
       body: text,
     };
