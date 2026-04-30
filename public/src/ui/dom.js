@@ -1,7 +1,6 @@
 // ============================================================
 // CASP Extreme v0 — DOM Cache & Logging
 // ============================================================
-import { API_BASE, isServerConfigured } from "../config.js";
 
 export const DOM = {};
 
@@ -29,18 +28,28 @@ export function initDOM() {
   DOM.sessionList      = document.getElementById("session-list");
   DOM.logArea          = document.getElementById("log-area");
 
-  if(isServerConfigured()){
-    DOM.serverStatus.textContent=`API: ${API_BASE}`;
-    DOM.serverStatus.className="server-status configured";
+  // BFF 모드: 초기 상태는 대기. engine-start 성공 시 updateServerStatus로 갱신.
+  DOM.serverStatus.textContent = "⏳ Engine standby";
+  DOM.serverStatus.className = "server-status standby";
+}
+
+// engine-start 성공/실패 시 호출
+export function updateServerStatus(connected, detail) {
+  if (connected) {
+    DOM.serverStatus.textContent = "● Engine connected";
+    DOM.serverStatus.className = "server-status configured";
   } else {
-    DOM.serverStatus.textContent="⚠ Server not configured";
-    DOM.serverStatus.className="server-status not-configured";
+    DOM.serverStatus.textContent = `⚠ Engine error: ${detail || "unknown"}`;
+    DOM.serverStatus.className = "server-status not-configured";
   }
 }
 
 export function log(msg) {
-  const t=new Date().toLocaleTimeString();
-  const line=`[${t}] ${msg}`;
+  const t = new Date().toLocaleTimeString();
+  const line = `[${t}] ${msg}`;
   console.log(line);
-  if(DOM.logArea){DOM.logArea.textContent+=line+"\n";DOM.logArea.scrollTop=DOM.logArea.scrollHeight;}
+  if (DOM.logArea) {
+    DOM.logArea.textContent += line + "\n";
+    DOM.logArea.scrollTop = DOM.logArea.scrollHeight;
+  }
 }
