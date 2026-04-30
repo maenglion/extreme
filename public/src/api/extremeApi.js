@@ -8,10 +8,6 @@
 //   /api/engine-start    세션 생성
 //   /api/engine-analyze  오디오 + meta 분석
 //   /api/engine-report   결과 조회
-//
-// 사용하지 않음:
-//   engine-ingest
-//   mockResult
 // ============================================================
 
 import { STATE, getCurrentSession } from "../state/sessionStore.js";

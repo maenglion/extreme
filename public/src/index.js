@@ -9,7 +9,6 @@ import { selectStep, updateButtons } from "./ui/actions.js";
 import { updateStreamInfo, _injectStopRecording } from "./audio/tabAudio.js";
 import { startRecording, pauseRecording, stopRecording, initCtrlChannel } from "./audio/recorder.js";
 import { fetchReport } from "./api/extremeApi.js";
-import { fakeSleep } from "./mock/mockResult.js";
 
 // Wire circular dependency: tabAudio needs stopRecording from recorder
 _injectStopRecording(stopRecording);
@@ -44,7 +43,6 @@ async function analyzeSession() {
   }
 
   // Fallback: 프론트 가중평균
-  await fakeSleep(400);
   let totalDur=0;
   done.forEach(s=>{totalDur+=session.steps[s].result.voice_duration_sec||1;});
   const overall={};
