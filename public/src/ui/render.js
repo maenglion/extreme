@@ -233,6 +233,7 @@ export function renderDelta(session) {
 
 export function formatMetric(name, value) {
   if (value == null) return "—";
+  if (name.includes("count")) return Math.round(value).toString();
   if (name.includes("ratio")) return (value * 100).toFixed(1) + "%";
   if (name.includes("ms")) return Math.round(value) + "ms";
   if (name.includes("rms")) return value.toFixed(4);

@@ -15,6 +15,9 @@ export const STEP_LABELS = {
 export const PREVIEW_METRICS = [
   "pause_ratio", "silence_ratio", "clipping_ratio",
   "snr_db_proxy", "energy_decay", "speech_rate_proxy",
+  "articulation_rate_proxy", "speech_activity_density_proxy",
+  "syllable_rate_total_proxy", "syllable_nucleus_count_proxy",
+  "syllable_peak_quality_proxy",
   "f0_median", "f0_range_st", "voiced_ratio",
   "delta_f0_peak", "pause_event_count", "long_pause_count",
   // Day 4: transition
@@ -24,7 +27,7 @@ export const PREVIEW_METRICS = [
 export const SCORE_KEYS = ["FS_v0", "SCS_v0", "ERS_v0", "VSI_v0"];
 
 export const DELTA_METRICS = [
-  "pause_ratio", "silence_ratio", "energy_decay", "speech_rate_proxy",
+  "pause_ratio", "silence_ratio", "energy_decay", "speech_rate_proxy", "articulation_rate_proxy",
   "f0_median", "f0_range_st", "voiced_ratio",
   // Day 4
   "mean_transition_strength",
