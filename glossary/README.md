@@ -14,10 +14,6 @@ npm start
 
 브라우저에서 `http://127.0.0.1:4173`을 엽니다.
 
-## Netlify 배포
-
-저장소를 Netlify에 연결하면 루트의 `netlify.toml`이 `public/index.html`을 진입점으로 사용합니다. `npm run build`가 SQLite 내용을 `public/data/terms.json`으로 내보내므로 공개 페이지에서는 별도 DB 서버 없이 읽을 수 있습니다. 상세 주소도 `_redirects`를 통해 같은 진입점으로 연결됩니다.
-
 ## 데이터 구조
 
 - `terms`: 용어와 설명 본문, 누적 등장 횟수

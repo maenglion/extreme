@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run seed && node scripts/export-static.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "seed": "node db/seed.js",

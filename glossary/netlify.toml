@@ -1,8 +1,0 @@
-[build]
-  publish = "public"
-
-[[redirects]]
-  from = "/terms/*"
-  to = "/index.html"
-  status = 200
-
