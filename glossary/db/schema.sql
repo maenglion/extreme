@@ -32,15 +32,6 @@ CREATE TABLE IF NOT EXISTS term_occurrences (
   submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS term_lessons (
-  term_id INTEGER PRIMARY KEY REFERENCES terms(id) ON DELETE CASCADE,
-  memory_hook TEXT NOT NULL,
-  why_it_matters TEXT NOT NULL,
-  logic_steps TEXT NOT NULL,
-  common_mistake TEXT NOT NULL,
-  related_terms TEXT NOT NULL DEFAULT '[]'
-);
-
 CREATE INDEX IF NOT EXISTS idx_terms_last_seen
 ON terms(last_seen_at DESC);
 
