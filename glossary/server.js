@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listTerms, openGlossary } from './db/glossary.js';
+import { getTerm, listTerms, openGlossary } from './db/glossary.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, 'public');
@@ -26,11 +26,22 @@ export function createApp({ dbPath } = {}) {
       }
     }
 
+    const termApiMatch = url.pathname.match(/^\/api\/terms\/(\d+)$/);
+    if (request.method === 'GET' && termApiMatch) {
+      const db = openGlossary(dbPath);
+      try {
+        const term = getTerm(db, Number(termApiMatch[1]));
+        return term ? sendJson(response, 200, { term }) : sendJson(response, 404, { error: 'Term not found' });
+      } finally {
+        db.close();
+      }
+    }
+
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return sendJson(response, 405, { error: 'Method not allowed' });
     }
 
-    const requestedPath = url.pathname === '/' ? '/index.html' : url.pathname;
+    const requestedPath = url.pathname === '/' || /^\/terms\/\d+$/.test(url.pathname) ? '/index.html' : url.pathname;
     const filePath = path.resolve(publicDir, `.${requestedPath}`);
     if (!filePath.startsWith(`${publicDir}${path.sep}`)) return sendJson(response, 404, { error: 'Not found' });
 
