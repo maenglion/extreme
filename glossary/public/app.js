@@ -2,6 +2,23 @@ const list = document.querySelector('#term-list');
 const termCount = document.querySelector('#term-count');
 const mentionCount = document.querySelector('#mention-count');
 
+async function fetchData(apiPath) {
+  try {
+    const response = await fetch(apiPath);
+    if (!response.ok) throw new Error('API unavailable');
+    return await response.json();
+  } catch {
+    const response = await fetch('/data/terms.json');
+    if (!response.ok) throw new Error('용어 데이터를 불러오지 못했습니다.');
+    const data = await response.json();
+    const detailMatch = apiPath.match(/\/api\/terms\/(\d+)$/);
+    if (!detailMatch) return data;
+    const term = data.terms.find((item) => item.id === Number(detailMatch[1]));
+    if (!term) throw new Error('해당 용어를 찾지 못했습니다.');
+    return { term };
+  }
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -44,11 +61,7 @@ function renderTerm(term, index) {
 }
 
 function loadCatalog() {
-  fetch('/api/terms')
-  .then((response) => {
-    if (!response.ok) throw new Error('용어를 불러오지 못했습니다.');
-    return response.json();
-  })
+  fetchData('/api/terms')
   .then(({ terms }) => {
     termCount.textContent = terms.length;
     mentionCount.textContent = terms.reduce((sum, term) => sum + term.occurrenceCount, 0);
@@ -115,11 +128,7 @@ function renderDetail(term) {
 
 const detailMatch = location.pathname.match(/^\/terms\/(\d+)$/);
 if (detailMatch) {
-  fetch(`/api/terms/${detailMatch[1]}`)
-    .then((response) => {
-      if (!response.ok) throw new Error('해당 용어를 찾지 못했습니다.');
-      return response.json();
-    })
+  fetchData(`/api/terms/${detailMatch[1]}`)
     .then(({ term }) => renderDetail(term))
     .catch((error) => {
       const detail = document.querySelector('#detail');
